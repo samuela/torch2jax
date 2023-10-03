@@ -28,6 +28,7 @@
 
         devShell = pkgs.mkShell {
           buildInputs = [
+            build
             ipython
             isort
             jax
@@ -35,6 +36,7 @@
             pytest
             torch
             torchvision
+            twine
           ];
         };
       });
