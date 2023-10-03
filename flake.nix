@@ -26,14 +26,16 @@
           pythonImportsCheck = [ "torch2jax" ];
         };
 
-        devShell = pkgs.mkShell { buildInputs = [
-          ipython
-          isort
-          jax
-          jaxlib'
-          pytest
-          torch
-          torchvision
-        ]; };
+        devShell = pkgs.mkShell {
+          buildInputs = [
+            ipython
+            isort
+            jax
+            jaxlib'
+            pytest
+            torch
+            torchvision
+          ];
+        };
       });
 }
