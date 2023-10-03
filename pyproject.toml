@@ -7,3 +7,7 @@ authors = [
 description = "Run PyTorch in JAX. 🤝"
 readme = "README.md"
 dependencies = ["jax", "torch"]
+
+[project.urls]
+"Homepage" = "https://github.com/samuela/torch2jax"
+"Bug Tracker" = "https://github.com/samuela/torch2jax/issues"
