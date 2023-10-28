@@ -10,14 +10,6 @@ import jax.dlpack
 import jax.numpy as jnp
 import torch
 
-Precision = xla_client.PrecisionConfig.Precision
-Precision.__str__ = lambda precision: precision.name
-PrecisionType = Any
-PrecisionLike = Union[None, PrecisionType, Tuple[PrecisionType, PrecisionType]]
-
-Array = Any
-DType = Any
-Shape = Sequence[int]
 
 def t2j_array(torch_array):
   # Using dlpack here causes segfaults on eg `t2j(lambda x: torch.Tensor([3.0]) * x)(jnp.array([0.0]))` when we use
