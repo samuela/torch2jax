@@ -2,6 +2,8 @@
 # TODO: test batchnorm2d
 # TODO: test torch.nn.functional.layer_norm
 
+import socket
+
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -374,6 +376,19 @@ def test_MaxPool2d():
         aac(jax_grad, x.grad)
 
 
+def is_network_reachable():
+  """Determine whether DNS resolution works on download.pytorch.org.
+
+  The nix build environment disallows network access, making some tests
+  impossible. We use this function to selectively disable those tests."""
+  try:
+    socket.gethostbyname("download.pytorch.org")
+    return True
+  except socket.gaierror:
+    return False
+
+
+@pytest.mark.skipif(not is_network_reachable(), reason="Network is not reachable")
 def test_resnet18():
   import torchvision
 
@@ -399,6 +414,7 @@ def test_resnet18():
   # to reasonable expectations.
 
 
+@pytest.mark.skipif(not is_network_reachable(), reason="Network is not reachable")
 def test_vit_b16():
   import torchvision
 

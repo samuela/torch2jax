@@ -31,5 +31,11 @@ jobs:
         run: "nix develop --command ruff check ."
       - name: Format
         run: "nix develop --command ruff format --diff ."
+
+      # `nix build` also runs pytest, but it does so in a restrictive sandbox that disallows network. This means that we
+      # can't run any tests that download weights. Running outside of the nix build environment allows us to run those
+      # tests as well.
+      - name: pytest
+        run: "nix develop --command pytest"
       - name: Build
         run: "nix build"
