@@ -239,16 +239,17 @@ def conv_transpose2d(input, weight, bias=None, stride=1, padding=0, output_paddi
   output_padding_lax = (max(stride[0] - weight.shape[2], 0), max(stride[1] - weight.shape[3], 0))
   if isinstance(output_padding, int):
     output_padding = (output_padding, output_padding)
-  assert output_padding == output_padding_lax, f"lax conv_transpose assumes output_padding = " \
-                                               f"{output_padding_lax}, found {output_padding}"
+  assert output_padding == output_padding_lax, (
+    f"lax conv_transpose assumes output_padding = " f"{output_padding_lax}, found {output_padding}"
+  )
 
   res = gradient_based_conv_transpose(
-      lhs=coerce(input),
-      rhs=coerce(weight),
-      strides=stride,
-      padding='VALID',
-      dimension_numbers=('NCHW', 'OIHW', 'NCHW'),
-      dilation=dilation
+    lhs=coerce(input),
+    rhs=coerce(weight),
+    strides=stride,
+    padding="VALID",
+    dimension_numbers=("NCHW", "OIHW", "NCHW"),
+    dilation=dilation,
   )
   if bias is not None:
     res += coerce(bias)[jnp.newaxis, :, jnp.newaxis, jnp.newaxis]
@@ -256,7 +257,7 @@ def conv_transpose2d(input, weight, bias=None, stride=1, padding=0, output_paddi
 
 
 def _deconv_output_length(input_length, filter_size, padding, output_padding=None, stride=0, dilation=1):
-  """ Taken from https://github.com/google/jax/pull/5772
+  """Taken from https://github.com/google/jax/pull/5772
   Determines the output length of a transposed convolution given the input length.
   Function modified from Keras.
   Arguments:
@@ -278,31 +279,35 @@ def _deconv_output_length(input_length, filter_size, padding, output_padding=Non
 
   # Infer length if output padding is None, else compute the exact length
   if output_padding is None:
-    if padding == 'VALID':
+    if padding == "VALID":
       length = input_length * stride + jax.lax.max(filter_size - stride, 0)
-    elif padding == 'SAME':
+    elif padding == "SAME":
       length = input_length * stride
     else:
-      length = ((input_length - 1) * stride + filter_size
-                - padding[0] - padding[1])
+      length = (input_length - 1) * stride + filter_size - padding[0] - padding[1]
 
   else:
-    if padding == 'SAME':
+    if padding == "SAME":
       pad = filter_size // 2
       total_pad = pad * 2
-    elif padding == 'VALID':
+    elif padding == "VALID":
       total_pad = 0
     else:
       total_pad = padding[0] + padding[1]
 
-    length = ((input_length - 1) * stride + filter_size - total_pad +
-              output_padding)
+    length = (input_length - 1) * stride + filter_size - total_pad + output_padding
 
   return length
 
 
-def _compute_adjusted_padding(input_size: int, output_size: int, kernel_size: int, stride: int,
-                              padding: Union[str, Tuple[int, int]], dilation: int = 1,) -> Tuple[int, int]:
+def _compute_adjusted_padding(
+  input_size: int,
+  output_size: int,
+  kernel_size: int,
+  stride: int,
+  padding: Union[str, Tuple[int, int]],
+  dilation: int = 1,
+) -> Tuple[int, int]:
   """
   Taken from https://github.com/google/jax/pull/5772
   Computes adjusted padding for desired ConvTranspose `output_size`.
@@ -313,18 +318,21 @@ def _compute_adjusted_padding(input_size: int, output_size: int, kernel_size: in
   if padding == "VALID":
     expected_input_size = (output_size - kernel_size + stride) // stride
     if input_size != expected_input_size:
-      raise ValueError(f"The expected input size with the current set of input "
-                       f"parameters is {expected_input_size} which doesn't "
-                       f"match the actual input size {input_size}.")
+      raise ValueError(
+        f"The expected input size with the current set of input "
+        f"parameters is {expected_input_size} which doesn't "
+        f"match the actual input size {input_size}."
+      )
     padding_before = 0
   elif padding == "SAME":
     expected_input_size = (output_size + stride - 1) // stride
     if input_size != expected_input_size:
-      raise ValueError(f"The expected input size with the current set of input "
-                       f"parameters is {expected_input_size} which doesn't "
-                       f"match the actual input size {input_size}.")
-    padding_needed = jax.lax.max(0,
-                         (input_size - 1) * stride + kernel_size - output_size)
+      raise ValueError(
+        f"The expected input size with the current set of input "
+        f"parameters is {expected_input_size} which doesn't "
+        f"match the actual input size {input_size}."
+      )
+    padding_needed = jax.lax.max(0, (input_size - 1) * stride + kernel_size - output_size)
     padding_before = padding_needed // 2
   else:
     padding_before = padding[0]  # type: ignore[assignment]
@@ -336,14 +344,18 @@ def _compute_adjusted_padding(input_size: int, output_size: int, kernel_size: in
   return (pad_before, pad_after)
 
 
-def gradient_based_conv_transpose(lhs, rhs, strides: Sequence[int],
-                                  padding: Union[str, Sequence[Tuple[int, int]]],
-                                  output_padding: Optional[Sequence[int]] = None,
-                                  output_shape: Optional[Sequence[int]] = None,
-                                  dilation: Optional[Sequence[int]] = None,
-                                  dimension_numbers: jax.lax.ConvGeneralDilatedDimensionNumbers = None,
-                                  transpose_kernel: bool = True,
-                                  precision=None):
+def gradient_based_conv_transpose(
+  lhs,
+  rhs,
+  strides: Sequence[int],
+  padding: Union[str, Sequence[Tuple[int, int]]],
+  output_padding: Optional[Sequence[int]] = None,
+  output_shape: Optional[Sequence[int]] = None,
+  dilation: Optional[Sequence[int]] = None,
+  dimension_numbers: jax.lax.ConvGeneralDilatedDimensionNumbers = None,
+  transpose_kernel: bool = True,
+  precision=None,
+):
   """
   Taken from https://github.com/google/jax/pull/5772
   Convenience wrapper for calculating the N-d transposed convolution.
@@ -400,15 +412,15 @@ def gradient_based_conv_transpose(lhs, rhs, strides: Sequence[int],
   # Set dimensional layout defaults if not specified.
   if dimension_numbers is None:
     if ndims == 2:
-      dimension_numbers = ('NC', 'IO', 'NC')
+      dimension_numbers = ("NC", "IO", "NC")
     elif ndims == 3:
-      dimension_numbers = ('NHC', 'HIO', 'NHC')
+      dimension_numbers = ("NHC", "HIO", "NHC")
     elif ndims == 4:
-      dimension_numbers = ('NHWC', 'HWIO', 'NHWC')
+      dimension_numbers = ("NHWC", "HWIO", "NHWC")
     elif ndims == 5:
-      dimension_numbers = ('NHWDC', 'HWDIO', 'NHWDC')
+      dimension_numbers = ("NHWDC", "HWDIO", "NHWDC")
     else:
-      raise ValueError('No 4+ dimensional dimension_number defaults.')
+      raise ValueError("No 4+ dimensional dimension_number defaults.")
   dn = jax.lax.conv_dimension_numbers(lhs.shape, rhs.shape, dimension_numbers)
   k_shape = jnp.take(jnp.array(rhs.shape), jnp.array(dn.rhs_spec))
   k_sdims = k_shape[2:]  # type: ignore[index]
@@ -423,30 +435,31 @@ def gradient_based_conv_transpose(lhs, rhs, strides: Sequence[int],
     output_padding = [None] * (rhs.ndim - 2)  # type: ignore[list-item]
 
   if isinstance(padding, str):
-    if padding in {'SAME', 'VALID'}:
+    if padding in {"SAME", "VALID"}:
       padding = [padding] * (rhs.ndim - 2)  # type: ignore[list-item]
     else:
       raise ValueError(f"`padding` must be 'VALID' or 'SAME'. Passed: {padding}.")
 
-  inferred_output_shape = tuple(map(_deconv_output_length, i_sdims, k_sdims,
-                              padding, output_padding, strides, dilation))
+  inferred_output_shape = tuple(
+    map(_deconv_output_length, i_sdims, k_sdims, padding, output_padding, strides, dilation)
+  )
   if output_shape is None:
     output_shape = inferred_output_shape  # type: ignore[assignment]
   else:
     if not output_shape == inferred_output_shape:
-      raise ValueError(f"`output_padding` and `output_shape` are not compatible."
-                       f"Inferred output shape from `output_padding`: {inferred_output_shape}, "
-                       f"but got `output_shape` {output_shape}")
+      raise ValueError(
+        f"`output_padding` and `output_shape` are not compatible."
+        f"Inferred output shape from `output_padding`: {inferred_output_shape}, "
+        f"but got `output_shape` {output_shape}"
+      )
 
-  pads = tuple(map(_compute_adjusted_padding, i_sdims, output_shape,
-                   k_sdims, strides, padding, dilation))
+  pads = tuple(map(_compute_adjusted_padding, i_sdims, output_shape, k_sdims, strides, padding, dilation))
 
   if transpose_kernel:
     # flip spatial dims and swap input / output channel axes
     rhs = _flip_axes(rhs, dn.rhs_spec[2:])
     rhs = jnp.swapaxes(rhs, dn.rhs_spec[0], dn.rhs_spec[1])
-  return jax.lax.conv_general_dilated(lhs, rhs, one, pads, strides, dilation, dn,
-                              precision=precision)
+  return jax.lax.conv_general_dilated(lhs, rhs, one, pads, strides, dilation, dn, precision=precision)
 
 
 def _flip_axes(x, axes):
