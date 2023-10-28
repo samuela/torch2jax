@@ -8,8 +8,6 @@ import numpy as np
 import jax
 import jax.dlpack
 import jax.numpy as jnp
-from jax.lib import xla_client
-
 import torch
 
 Precision = xla_client.PrecisionConfig.Precision
