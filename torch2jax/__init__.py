@@ -22,13 +22,17 @@ def t2j_array(torch_array):
   # Note FunctionalTensor.numpy() returns incorrect results, preventing us from using torch.func.functionalize.
   # return jnp.array(torch_array.numpy(force=True))
 
+
 def j2t_array(jax_array):
   return torch.utils.dlpack.from_dlpack(jax.dlpack.to_dlpack(jax_array))
 
   # Alternative, but copying implementation:
   # return torch.from_numpy(jax_array.asnumpy())
 
+
 HANDLED_FUNCTIONS = {}
+
+
 class Torchish:
   def __init__(self, value):
     if isinstance(value, Torchish):
@@ -41,20 +45,25 @@ class Torchish:
       assert not value.is_nested, "Torchish does not support NestedTensors"
       self.value = t2j_array(value)
     else:
-      raise NotImplementedError(f"Attempted to instantiate Torchish with {value}. Don't know what to do with that. Torchish supports int, float, jax.numpy.ndarray, and torch.Tensor values.")
+      raise NotImplementedError(
+        f"Attempted to instantiate Torchish with {value}. Don't know what to do with that. Torchish supports int, float, jax.numpy.ndarray, and torch.Tensor values."
+      )
 
   @classmethod
   def __torch_function__(cls, func, types, args=(), kwargs=None):
     if kwargs is None:
       kwargs = {}
     if func not in HANDLED_FUNCTIONS or not all(issubclass(t, (torch.Tensor, Torchish)) for t in types):
-      print("ERROR: you tried to do something not supported yet! Open a PR or issue on GitHub if you believe this should be included in torch2jax.")
+      print(
+        "ERROR: you tried to do something not supported yet! Open a PR or issue on GitHub if you believe this should be included in torch2jax."
+      )
       return NotImplemented
     # NOTE: some functions, like multi_head_attention_forward return a tuple of torch.Tensor's, and will even return
     # `None` in some configurations. so we cannot necessarily `Torchish` the output of `HANDLED_FUNCTIONS[func]`. Instead
     # the handler functions are responsible for outputting Torchish objects where appropriate.
     return HANDLED_FUNCTIONS[func](*args, **kwargs)
 
+  # fmt: off
   @property
   def dtype(self): return self.value.dtype
   @property
@@ -75,15 +84,20 @@ class Torchish:
   def size(self): return self.shape
   def view(self, *shape): return Torchish(jnp.reshape(self.value, shape))
   reshape = view
+  # fmt: on
+
   def expand(self, *sizes):
     assert len(sizes) == self.ndim, "TODO: implement len(sizes) > self.ndim"
     newshape = [new if new != -1 else old for old, new in zip(self.shape, sizes)]
     for i, (old, new) in enumerate(zip(self.shape, sizes)):
       if old != 1:
-        assert newshape[i] == old, f"Attempted to expand dimension {i} from {old} to {new}. Cannot expand on non-singleton dimensions."
+        assert (
+          newshape[i] == old
+        ), f"Attempted to expand dimension {i} from {old} to {new}. Cannot expand on non-singleton dimensions."
 
     return Torchish(jnp.broadcast_to(self.value, newshape))
 
+  # fmt: off
   def __add__(self, other): return Torchish(self.value + coerce(other))
   def __getitem__(self, key): return Torchish(self.value.__getitem__(key))
   def __matmul__(self, other): return Torchish(self.value @ coerce(other))
@@ -100,36 +114,49 @@ class Torchish:
   def pow(*args, **kwargs): return torch.pow(*args, **kwargs)
   def sum(*args, **kwargs): return torch.sum(*args, **kwargs)
   def transpose(*args, **kwargs): return torch.transpose(*args, **kwargs)
+  # fmt: on
 
   def add_(self, other):
     self.value += other
     return self
+
   def sub_(self, other):
     self.value -= other
     return self
+
   def mul_(self, other):
     self.value *= other
     return self
+
   def div_(self, other):
     self.value /= other
     return self
 
+
 coerce = lambda x: Torchish(x).value
+
 
 def implements(torch_function, JAXishify_output=True):
   """Register a torch function override for Torchish"""
+
   def decorator(func):
     func1 = (lambda *args, **kwargs: Torchish(func(*args, **kwargs))) if JAXishify_output else func
     functools.update_wrapper(func1, torch_function)
     HANDLED_FUNCTIONS[torch_function] = func1
     return func1
+
   return decorator
+
 
 def connect(torch_function, jax_function, dont_coerce_argnums=()):
   @implements(torch_function)
   def fn(*args, **kwargs):
     # NOTE: we don't coerce kwargs! So far this has not been problematic.
-    return jax_function(*(arg if i in dont_coerce_argnums else coerce(arg) for i, arg in enumerate(args)), **kwargs)
+    return jax_function(
+      *(arg if i in dont_coerce_argnums else coerce(arg) for i, arg in enumerate(args)),
+      **kwargs,
+    )
+
 
 connect(torch.add, jnp.add)
 connect(torch.exp, jnp.exp)
@@ -147,9 +174,12 @@ connect(torch.transpose, jnp.swapaxes)
 
 connect(torch.Tensor.mul, jnp.multiply)
 
+
 # TODO: test
 @implements(torch.cat)
-def cat(tensors, dim=0): return jnp.concatenate([coerce(x) for x in tensors], axis=dim)
+def cat(tensors, dim=0):
+  return jnp.concatenate([coerce(x) for x in tensors], axis=dim)
+
 
 # TODO: test flatten
 @implements(torch.flatten)
@@ -157,22 +187,27 @@ def flatten(input, start_dim=0, end_dim=-1):
   assert end_dim == -1, "TODO: implement end_dim"
   return jnp.reshape(coerce(input), input.shape[:start_dim] + (-1,))
 
+
 @implements(torch.nn.functional.adaptive_avg_pool2d)
 def adaptive_avg_pool2d(input, output_size):
   assert output_size == 1 or output_size == (1, 1), "TODO: implement output_size != 1"
   assert input.ndim == 4, "TODO: implement non-batched input"
   return jnp.mean(coerce(input), axis=(2, 3), keepdims=True)
 
+
 @implements(torch.nn.functional.batch_norm)
 def batch_norm(input, running_mean, running_var, weight=None, bias=None, training=False, momentum=0.1, eps=1e-5):
   assert not training, "torch.nn.functional.batch_norm is only supported in eval()-mode"
   newshape = (1, -1) + (1,) * (len(input.shape) - 2)
-  res = (coerce(input) - coerce(running_mean).reshape(newshape)) * jax.lax.rsqrt(coerce(running_var).reshape(newshape) + coerce(eps))
+  res = (coerce(input) - coerce(running_mean).reshape(newshape)) * jax.lax.rsqrt(
+    coerce(running_var).reshape(newshape) + coerce(eps)
+  )
   if weight is not None:
     res *= coerce(weight).reshape(newshape)
   if bias is not None:
     res += coerce(bias).reshape(newshape)
   return res
+
 
 @implements(torch.nn.functional.conv2d)
 def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
@@ -184,15 +219,16 @@ def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     padding = [(p1, p1), (p2, p2)]
 
   res = jax.lax.conv_general_dilated(
-      lhs=coerce(input),
-      rhs=coerce(weight),
-      window_strides=stride,
-      padding=padding,
-      rhs_dilation=dilation
+    lhs=coerce(input),
+    rhs=coerce(weight),
+    window_strides=stride,
+    padding=padding,
+    rhs_dilation=dilation,
   )
   if bias is not None:
     res += coerce(bias)[jnp.newaxis, :, jnp.newaxis, jnp.newaxis]
   return res
+
 
 @implements(torch.nn.functional.conv_transpose2d)
 def conv_transpose2d(input, weight, bias=None, stride=1, padding=0, output_padding=0, groups=1, dilation=1):
@@ -217,6 +253,7 @@ def conv_transpose2d(input, weight, bias=None, stride=1, padding=0, output_paddi
   if bias is not None:
     res += coerce(bias)[jnp.newaxis, :, jnp.newaxis, jnp.newaxis]
   return res
+
 
 def _deconv_output_length(input_length, filter_size, padding, output_padding=None, stride=0, dilation=1):
   """ Taken from https://github.com/google/jax/pull/5772
@@ -297,6 +334,7 @@ def _compute_adjusted_padding(input_size: int, output_size: int, kernel_size: in
   pad_before = kernel_size - 1 - padding_before
   pad_after = padded_out_size - expanded_input_size - pad_before
   return (pad_before, pad_after)
+
 
 def gradient_based_conv_transpose(lhs, rhs, strides: Sequence[int],
                                   padding: Union[str, Sequence[Tuple[int, int]]],
@@ -410,6 +448,7 @@ def gradient_based_conv_transpose(lhs, rhs, strides: Sequence[int],
   return jax.lax.conv_general_dilated(lhs, rhs, one, pads, strides, dilation, dn,
                               precision=precision)
 
+
 def _flip_axes(x, axes):
   """
   Taken from https://github.com/google/jax/pull/5772
@@ -418,11 +457,13 @@ def _flip_axes(x, axes):
     x = jnp.flip(x, axis)
   return x
 
+
 @implements(torch.nn.functional.dropout)
 def dropout(input, p=0.5, training=True, inplace=False):
   assert not training, "TODO: implement dropout=True"
   assert not inplace, "TODO: implement inplace=True"
   return input
+
 
 @implements(torch.nn.functional.layer_norm)
 def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-05):
@@ -441,12 +482,14 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-05):
     res += coerce(bias)
   return res
 
+
 @implements(torch.nn.functional.linear)
 def linear(input, weight, bias=None):
   if bias is None:
     return coerce(input) @ coerce(weight).T
   else:
     return coerce(input) @ coerce(weight).T + coerce(bias)
+
 
 @implements(torch.nn.functional.max_pool1d)
 def max_pool1d(input, kernel_size, stride=None, padding=0, dilation=1, ceil_mode=False, return_indices=False):
@@ -455,26 +498,34 @@ def max_pool1d(input, kernel_size, stride=None, padding=0, dilation=1, ceil_mode
   assert not return_indices, "TODO: implement return_indices"
 
   return jax.lax.reduce_window(
-      coerce(input),
-      -jnp.inf,
-      jax.lax.max,
-      window_dimensions=(1, 1, kernel_size) if isinstance(kernel_size, int) else (1, 1) + kernel_size,
-      window_strides=(1, 1, stride) if isinstance(stride, int) else (1, 1) + stride,
-      padding=[(0, 0), (0, 0), (padding, padding)] if isinstance(padding, int) else [(0, 0), (0, 0), padding * 2])
+    coerce(input),
+    -jnp.inf,
+    jax.lax.max,
+    window_dimensions=(1, 1, kernel_size) if isinstance(kernel_size, int) else (1, 1) + kernel_size,
+    window_strides=(1, 1, stride) if isinstance(stride, int) else (1, 1) + stride,
+    padding=[(0, 0), (0, 0), (padding, padding)] if isinstance(padding, int) else [(0, 0), (0, 0), padding * 2],
+  )
+
 
 @implements(torch.nn.functional.max_pool2d)
 def max_pool2d(input, kernel_size, stride=None, padding=0, dilation=1, ceil_mode=False, return_indices=False):
+  assert input.ndim == 4, "TODO: implement non-batched input"
   assert dilation == 1, "TODO: implement dilation != 1"
   assert not ceil_mode, "TODO: implement ceil_mode"
   assert not return_indices, "TODO: implement return_indices"
 
+  # Coerce `padding: Int` -> `padding: Tuple[Int, Int]` if necessary.
+  (pad_h, pad_w) = (padding, padding) if isinstance(padding, int) else padding
   return jax.lax.reduce_window(
-      coerce(input),
-      -jnp.inf,
-      jax.lax.max,
-      window_dimensions=(1, 1, kernel_size, kernel_size) if isinstance(kernel_size, int) else (1, 1) + kernel_size,
-      window_strides=(1, 1, stride, stride) if isinstance(stride, int) else (1, 1) + stride,
-      padding=[(0, 0), (0, 0), (padding, padding), (padding, padding)] if isinstance(padding, int) else [(0, 0), (0, 0), (padding[0], padding[0]), (padding[1], padding[1])])
+    coerce(input),
+    -jnp.inf,
+    jax.lax.max,
+    # Note that these settings all rely on input.ndim == 4:
+    window_dimensions=(1, 1, kernel_size, kernel_size) if isinstance(kernel_size, int) else (1, 1) + kernel_size,
+    window_strides=(1, 1, stride, stride) if isinstance(stride, int) else (1, 1) + stride,
+    padding=[(0, 0), (0, 0), (pad_h, pad_h), (pad_w, pad_w)],
+  )
+
 
 @implements(torch.nn.functional.relu)
 def relu(x, inplace=False):
@@ -485,6 +536,7 @@ def relu(x, inplace=False):
     return x
   else:
     return jax.nn.relu(coerce(x))
+
 
 @implements(torch.nn.functional.scaled_dot_product_attention)
 def scaled_dot_product_attention(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False):
@@ -508,35 +560,36 @@ def scaled_dot_product_attention(query, key, value, attn_mask=None, dropout_p=0.
   # attn_weight = torch.dropout(attn_weight, dropout_p)
   return attn_weight @ V
 
+
 # NOTE: the "torch.Tensor" type annotations here are a lie, or at least an approximation: In reality, they can be
 # anything coerce-able.
 @implements(torch.nn.functional.multi_head_attention_forward, JAXishify_output=False)
 def multi_head_attention_forward(
-    query: torch.Tensor,
-    key: torch.Tensor,
-    value: torch.Tensor,
-    embed_dim_to_check: int,
-    num_heads: int,
-    in_proj_weight: Optional[torch.Tensor],
-    in_proj_bias: Optional[torch.Tensor],
-    bias_k: Optional[torch.Tensor],
-    bias_v: Optional[torch.Tensor],
-    add_zero_attn: bool,
-    dropout_p: float,
-    out_proj_weight: torch.Tensor,
-    out_proj_bias: Optional[torch.Tensor],
-    training: bool = True,
-    key_padding_mask: Optional[torch.Tensor] = None,
-    need_weights: bool = True,
-    attn_mask: Optional[torch.Tensor] = None,
-    use_separate_proj_weight: bool = False,
-    q_proj_weight: Optional[torch.Tensor] = None,
-    k_proj_weight: Optional[torch.Tensor] = None,
-    v_proj_weight: Optional[torch.Tensor] = None,
-    static_k: Optional[torch.Tensor] = None,
-    static_v: Optional[torch.Tensor] = None,
-    average_attn_weights: bool = True,
-    is_causal: bool = False
+  query: torch.Tensor,
+  key: torch.Tensor,
+  value: torch.Tensor,
+  embed_dim_to_check: int,
+  num_heads: int,
+  in_proj_weight: Optional[torch.Tensor],
+  in_proj_bias: Optional[torch.Tensor],
+  bias_k: Optional[torch.Tensor],
+  bias_v: Optional[torch.Tensor],
+  add_zero_attn: bool,
+  dropout_p: float,
+  out_proj_weight: torch.Tensor,
+  out_proj_bias: Optional[torch.Tensor],
+  training: bool = True,
+  key_padding_mask: Optional[torch.Tensor] = None,
+  need_weights: bool = True,
+  attn_mask: Optional[torch.Tensor] = None,
+  use_separate_proj_weight: bool = False,
+  q_proj_weight: Optional[torch.Tensor] = None,
+  k_proj_weight: Optional[torch.Tensor] = None,
+  v_proj_weight: Optional[torch.Tensor] = None,
+  static_k: Optional[torch.Tensor] = None,
+  static_v: Optional[torch.Tensor] = None,
+  average_attn_weights: bool = True,
+  is_causal: bool = False,
 ):
   assert in_proj_weight is not None, "TODO: implement in_proj_weight=None"
   assert in_proj_bias is not None, "TODO: implement in_proj_bias=None"
@@ -576,17 +629,23 @@ def multi_head_attention_forward(
   sdpa = jnp.concatenate(
     tuple(
       scaled_dot_product_attention(q, k, v).value
-      for q, k, v in zip(jnp.split(Q1, num_heads, axis=-1),
-                         jnp.split(K1, num_heads, axis=-1),
-                         jnp.split(V1, num_heads, axis=-1))),
-    axis=-1)
+      for q, k, v in zip(
+        jnp.split(Q1, num_heads, axis=-1),
+        jnp.split(K1, num_heads, axis=-1),
+        jnp.split(V1, num_heads, axis=-1),
+      )
+    ),
+    axis=-1,
+  )
   # print(sdpa.shape)  # (N, L, E)
   out = sdpa @ out_proj_weight.T + out_proj_bias
   return Torchish(jnp.swapaxes(out, 0, 1)), None
 
+
 # It might be nice to use torch.func.functionalize, but it so far seems buggy (FunctionalTensor.numpy() gives incorrect
 # results) and unnecessary.
 t2j_function = lambda f: lambda *args: f(*jax.tree_util.tree_map(Torchish, args)).value
+
 
 def t2j_module(module):
   def f(x, state_dict={}):
@@ -616,6 +675,7 @@ def t2j_module(module):
 
   return f
 
+
 def t2j(thing):
   if isinstance(thing, torch.Tensor):
     return t2j_array(thing)
@@ -626,6 +686,7 @@ def t2j(thing):
     return t2j_function(thing)
   else:
     raise NotImplementedError
+
 
 def j2t(thing):
   if isinstance(thing, jnp.ndarray):

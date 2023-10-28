@@ -11,7 +11,7 @@ from torch2jax import j2t, t2j
 
 vit = torchvision.models.vit_b_16().eval()
 batch = torch.randn(1, 3, 224, 224)
-vit(x)
+vit(batch)
 # => [-5.3352e-01, ..., 2.0390e-01]
 
 jax_vit = t2j(vit)
@@ -82,7 +82,7 @@ Similar to the randomness story, PyTorch and JAX have different approaches to ma
 torch2jax supports running batch norm models in `eval()`-mode. Just don't forget that you should avoid taking gradients w.r.t. buffers. For example,
 
 ```python
-rn18 = torchvision.models.resnet18(weights="DEFAULT").eval()
+rn18 = torchvision.models.resnet18().eval()
 loss = lambda x: torch.sum(x ** 2)
 
 batch = torch.randn(1, 3, 224, 224)
@@ -115,4 +115,6 @@ Check out [jax2torch](https://github.com/lucidrains/jax2torch).
 
 PyTorch has a non-trivial API surface to cover. Contributions are welcome!
 
-Run the test suite with `pytest` running in `nix shell`. Format imports with `isort --dont-follow-links .`.
+Run the test suite with `pytest` running in `nix develop`. Format the codebase with `ruff check --fix . && ruff format .`. Build the package with `nix build`.
+
+CI is handled by GitHub Actions. When modifying the CI configuration, it can be handy to test locally before pushing. This can be achieved with [act](https://github.com/nektos/act/issues/269). Run `act` within `nix develop` to run the CI locally.
