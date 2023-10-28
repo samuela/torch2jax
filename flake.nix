@@ -28,6 +28,7 @@
 
         devShell = pkgs.mkShell {
           buildInputs = [
+            pkgs.act
             pkgs.ruff
 
             build

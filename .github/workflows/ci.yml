@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      # This step should be a no-op on actual GitHub Actions, but it is necessary when using the "Micro" image with
+      # https://github.com/nektos/act. See https://github.com/nektos/act/issues/107 and
+      # https://github.com/nektos/act/issues/269.
+      - run: apt update && apt install -y curl git sudo xz-utils
+
+      - uses: "cachix/install-nix-action@v22"
+        with:
+          extra_nix_config: experimental-features = nix-command flakes
+          nix_path: nixpkgs=channel:nixos-unstable
+      - name: nix-info
+        run: "nix-shell -p nix-info --run 'nix-info -m'"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Lint
+        run: "nix develop --command ruff check ."
+      - name: Format
+        run: "nix develop --command ruff format --diff ."
+      - name: Build
+        run: "nix build"

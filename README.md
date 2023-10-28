@@ -115,4 +115,6 @@ Check out [jax2torch](https://github.com/lucidrains/jax2torch).
 
 PyTorch has a non-trivial API surface to cover. Contributions are welcome!
 
-Run the test suite with `pytest` running in `nix develop`. Format the codebase with `ruff check --fix . && ruff format .`.
+Run the test suite with `pytest` running in `nix develop`. Format the codebase with `ruff check --fix . && ruff format .`. Build the package with `nix build`.
+
+CI is handled by GitHub Actions. When modifying the CI configuration, it can be handy to test locally before pushing. This can be achieved with [act](https://github.com/nektos/act/issues/269). Run `act` within `nix develop` to run the CI locally.
