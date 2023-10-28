@@ -11,3 +11,12 @@ dependencies = ["jax", "torch"]
 [project.urls]
 "Homepage" = "https://github.com/samuela/torch2jax"
 "Bug Tracker" = "https://github.com/samuela/torch2jax/issues"
+
+[tool.ruff]
+# Enable the isort rules. See https://github.com/astral-sh/ruff/issues/465#issuecomment-1783684428.
+extend-select = ["I"]
+
+# E731 Do not assign a `lambda` expression, use a `def`
+ignore = ["E731"]
+indent-width = 2
+line-length = 120

@@ -115,4 +115,4 @@ Check out [jax2torch](https://github.com/lucidrains/jax2torch).
 
 PyTorch has a non-trivial API surface to cover. Contributions are welcome!
 
-Run the test suite with `pytest` running in `nix develop`. Format imports with `isort --dont-follow-links .`.
+Run the test suite with `pytest` running in `nix develop`. Format the codebase with `ruff check --fix . && ruff format .`.

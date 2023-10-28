@@ -12,6 +12,7 @@ from torch2jax import j2t, t2j
 
 aac = np.testing.assert_allclose
 
+
 class RngPooper:
   """A stateful wrapper around stateless random.PRNGKey's."""
 
@@ -21,6 +22,7 @@ class RngPooper:
   def poop(self):
     self.rng, rng_key = random.split(self.rng)
     return rng_key
+
 
 def t2j_function_test(f, input_shapes, rng=random.PRNGKey(123), num_tests=5, **assert_kwargs):
   for test_rng in random.split(rng, num_tests):
@@ -35,12 +37,21 @@ def t2j_function_test(f, input_shapes, rng=random.PRNGKey(123), num_tests=5, **a
 
       # Can only calculate gradients on scalar-output functions
       if len(input_shapes) > 1:
-        map(lambda x, y: aac(x.squeeze(), y.squeeze(), **assert_kwargs),
-            zip(grad(t2j(f_))(*inputs),
-                torch.func.grad(f_, argnums=tuple(range(len(input_shapes))))(*map(j2t, inputs))))
+        map(
+          lambda x, y: aac(x.squeeze(), y.squeeze(), **assert_kwargs),
+          zip(
+            grad(t2j(f_))(*inputs),
+            torch.func.grad(f_, argnums=tuple(range(len(input_shapes))))(*map(j2t, inputs)),
+          ),
+        )
       else:
         [input] = inputs
-        aac(grad(t2j(f_))(input).squeeze(), torch.func.grad(f_)(j2t(input)).squeeze(), **assert_kwargs)
+        aac(
+          grad(t2j(f_))(input).squeeze(),
+          torch.func.grad(f_)(j2t(input)).squeeze(),
+          **assert_kwargs,
+        )
+
 
 def test_inplace():
   def f(x):
@@ -56,16 +67,25 @@ def test_inplace():
   t2j_function_test(f, [(3, 5)], atol=1e-6)
   print(vmap(t2j(f))(jnp.array([1, 2, 3])))
 
+
 def test_scaled_dot_product_attention():
   t2j_function_test(lambda x, y: x @ y, [(2, 3, 5), (5, 7)], atol=1e-6)
 
-  t2j_function_test(torch.nn.functional.scaled_dot_product_attention, [(5, 3, 7), (5, 2, 7), (5, 2, 7)], atol=1e-6)
-  t2j_function_test(torch.nn.functional.scaled_dot_product_attention, [(5, 7, 11), (5, 7, 11), (5, 7, 11)], atol=1e-6)
+  sdpa = torch.nn.functional.scaled_dot_product_attention
+  t2j_function_test(sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7)], atol=1e-6)
+  t2j_function_test(sdpa, [(5, 7, 11), (5, 7, 11), (5, 7, 11)], atol=1e-6)
 
   E = 6
   num_heads = 2
-  t2j_function_test(lambda q, k, v, ipw, ipb, opw, opb: torch.nn.functional.multi_head_attention_forward(q, k, v, E, num_heads, ipw, ipb, None, None, False, 0.0, opw, opb, training=False, need_weights=False)[0], [(3, 1, 6)]*3 + [(3 * E, E), (3 * E,), (E, E), (E,)], atol=1e-5)
+  t2j_function_test(
+    lambda q, k, v, ipw, ipb, opw, opb: torch.nn.functional.multi_head_attention_forward(
+      q, k, v, E, num_heads, ipw, ipb, None, None, False, 0.0, opw, opb, training=False, need_weights=False
+    )[0],
+    [(3, 1, 6)] * 3 + [(3 * E, E), (3 * E,), (E, E), (E,)],
+    atol=1e-5,
+  )
   # TODO test MHA without batch dimension
+
 
 def test_oneliners():
   t2j_function_test(lambda x: torch.pow(x, 2), [()])
@@ -100,6 +120,7 @@ def test_oneliners():
 
   t2j_function_test(lambda x: x.expand(5, -1, -1), [(1, 3, 2)])
 
+
 def test_detach():
   t2j_function_test(lambda x: x.detach() ** 2, [()])
   t2j_function_test(lambda x: x.detach() ** 2, [(3,)])
@@ -109,6 +130,7 @@ def test_detach():
   # so instead we do:
   aac(grad(t2j(lambda x: torch.sum(x.detach() ** 2)))(2.1 * jnp.arange(3)), 0)
 
+
 def test_item():
   aac(t2j(lambda x: x.item() * x)(jnp.array(3)), 9)
   with pytest.raises(Exception):
@@ -116,6 +138,7 @@ def test_item():
 
   with pytest.raises(Exception):
     grad(t2j(lambda x: x.item() * x))(jnp.array(3))
+
 
 def test_AdaptiveAvgPool2d():
   # for output_size in [1, 2, (3, 4), (None, 4), (5, None)]:
@@ -141,11 +164,14 @@ def test_AdaptiveAvgPool2d():
     # Note these gradients are just the same value repeated. TODO: verify that makes sense mathematically.
     aac(jax_grad, x.grad, atol=1e-8)
 
+
 def test_Linear():
   model = torch.nn.Linear(2, 5)
   input_batch = random.normal(random.PRNGKey(123), (3, 2))
-  params = {"weight": random.normal(random.PRNGKey(123), (5, 2)),
-            "bias": random.normal(random.PRNGKey(123), (5,))}
+  params = {
+    "weight": random.normal(random.PRNGKey(123), (5, 2)),
+    "bias": random.normal(random.PRNGKey(123), (5,)),
+  }
 
   model.load_state_dict({k: j2t(v) for k, v in params.items()})
   res_torch = model(j2t(input_batch))
@@ -164,6 +190,7 @@ def test_Linear():
   res_torch.pow(2).sum().backward()
   aac(jax_grad["weight"], model.weight.grad, atol=1e-6)
   aac(jax_grad["bias"], model.bias.grad, atol=1e-6)
+
 
 def test_Linear_no_bias():
   model = torch.nn.Linear(2, 5, bias=False)
@@ -186,6 +213,7 @@ def test_Linear_no_bias():
 
   res_torch.pow(2).sum().backward()
   aac(jax_grad["weight"], model.weight.grad, atol=1e-6)
+
 
 def test_mlp():
   for activation in [torch.nn.ReLU, torch.nn.Tanh, torch.nn.Sigmoid]:
@@ -211,6 +239,7 @@ def test_mlp():
     torch_grad = {k: v.grad for k, v in model.named_parameters()}
     for k, v in model.named_parameters():
       aac(jax_grad[k], torch_grad[k], atol=1e-5)
+
 
 def test_Conv2d():
   for bias in [False, True]:
@@ -244,6 +273,7 @@ def test_Conv2d():
           if bias:
             aac(jax_grad["bias"], model.bias.grad, rtol=1e-3)
 
+
 def test_BatchNorm1d():
   # TODO: test (N, C, L) shape input
   rp = RngPooper(random.PRNGKey(123))
@@ -253,10 +283,12 @@ def test_BatchNorm1d():
       model = torch.nn.BatchNorm1d(5, eps=eps, affine=affine)
       model.eval()
 
-      input_batch = random.normal(rp.poop(), (3, 5)) # (N, C, L) is also supported
-      params = {"running_mean": random.normal(rp.poop(), (5, )),
-                "running_var": random.uniform(rp.poop(), (5, )),
-                "num_batches_tracked": random.randint(rp.poop(), (1,), 0, 100)}
+      input_batch = random.normal(rp.poop(), (3, 5))  # (N, C, L) is also supported
+      params = {
+        "running_mean": random.normal(rp.poop(), (5,)),
+        "running_var": random.uniform(rp.poop(), (5,)),
+        "num_batches_tracked": random.randint(rp.poop(), (1,), 0, 100),
+      }
       if affine:
         params["weight"] = random.normal(rp.poop(), (5,))
         params["bias"] = random.normal(rp.poop(), (5,))
@@ -274,22 +306,25 @@ def test_BatchNorm1d():
 
       # Test gradients
       if affine:
-        jax_grad = grad(lambda p: (jaxified_module(input_batch, state_dict={**p, "num_batches_tracked": 0}) ** 2).sum())({k: v for k, v in params.items() if k != "num_batches_tracked"})
+        jax_grad = grad(
+          lambda p: (jaxified_module(input_batch, state_dict={**p, "num_batches_tracked": 0}) ** 2).sum()
+        )({k: v for k, v in params.items() if k != "num_batches_tracked"})
 
         res_torch.pow(2).sum().backward()
         aac(jax_grad["weight"], model.weight.grad, atol=1e-5)
         aac(jax_grad["bias"], model.bias.grad, atol=1e-6)
 
+
 def test_MaxPool1d():
   for kernel_size in [1, 2, 3, 4, 5, (1,), (2,), (3,), (4,), (5,)]:
-    for stride in [None, 1, (1, ), 2, (2, ), 3, (3, )]:
+    for stride in [None, 1, (1,), 2, (2,), 3, (3,)]:
       for padding in [0, 1, (2,), (5,)]:
         model = torch.nn.MaxPool1d(kernel_size, stride, padding)
         input_batch = random.normal(random.PRNGKey(123), (7, 2, 16))
 
         try:
           res_torch = model(j2t(input_batch))
-        except:
+        except Exception:
           # RuntimeError: max_pool1d() padding should be at most half of kernel size, but got padding=2 and kernel_size=2
           continue
 
@@ -309,6 +344,7 @@ def test_MaxPool1d():
         model(x).pow(2).sum().backward()
         aac(jax_grad, x.grad)
 
+
 def test_MaxPool2d():
   for kernel_size in [1, 2, 3, 4, 5, (1, 2), (2, 4), (3, 2), (4, 1), (5, 5)]:
     for stride in [None, 1, (1, 1), 2, (2, 4), 3, (3, 2)]:
@@ -317,7 +353,7 @@ def test_MaxPool2d():
         input_batch = random.normal(random.PRNGKey(123), (7, 2, 16, 16))
         try:
           res_torch = model(j2t(input_batch))
-        except:
+        except Exception:
           # RuntimeError: pad should be at most half of kernel size, but got pad=7 and kernel_size=5
           continue
 
@@ -337,8 +373,10 @@ def test_MaxPool2d():
         model(x).pow(2).sum().backward()
         aac(jax_grad, x.grad)
 
+
 def test_resnet18():
   import torchvision
+
   model = torchvision.models.resnet18(weights="DEFAULT").eval()
 
   parameters = {k: t2j(v) for k, v in model.named_parameters()}
@@ -360,8 +398,10 @@ def test_resnet18():
   # Models use different convolution backends and are too deep to compare gradients programmatically. But they line up
   # to reasonable expectations.
 
+
 def test_vit_b16():
   import torchvision
+
   model = torchvision.models.vit_b_16(weights="DEFAULT")
   model.eval()
 

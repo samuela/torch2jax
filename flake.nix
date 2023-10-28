@@ -28,9 +28,10 @@
 
         devShell = pkgs.mkShell {
           buildInputs = [
+            pkgs.ruff
+
             build
             ipython
-            isort
             jax
             jaxlib'
             pytest
