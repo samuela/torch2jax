@@ -292,14 +292,14 @@ def _compute_adjusted_padding(input_size: int, output_size: int, kernel_size: in
   pad_after = padded_out_size - expanded_input_size - pad_before
   return (pad_before, pad_after)
 
-def gradient_based_conv_transpose(lhs: Array, rhs: Array, strides: Sequence[int],
+def gradient_based_conv_transpose(lhs, rhs, strides: Sequence[int],
                                   padding: Union[str, Sequence[Tuple[int, int]]],
                                   output_padding: Optional[Sequence[int]] = None,
                                   output_shape: Optional[Sequence[int]] = None,
                                   dilation: Optional[Sequence[int]] = None,
                                   dimension_numbers: jax.lax.ConvGeneralDilatedDimensionNumbers = None,
                                   transpose_kernel: bool = True,
-                                  precision: PrecisionLike = None) -> Array:
+                                  precision=None):
   """
   Taken from https://github.com/google/jax/pull/5772
   Convenience wrapper for calculating the N-d transposed convolution.
