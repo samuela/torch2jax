@@ -281,19 +281,21 @@ def max_pool1d(input, kernel_size, stride=None, padding=0, dilation=1, ceil_mode
 
 @implements(torch.nn.functional.max_pool2d)
 def max_pool2d(input, kernel_size, stride=None, padding=0, dilation=1, ceil_mode=False, return_indices=False):
+  assert input.ndim == 4, "TODO: implement non-batched input"
   assert dilation == 1, "TODO: implement dilation != 1"
   assert not ceil_mode, "TODO: implement ceil_mode"
   assert not return_indices, "TODO: implement return_indices"
 
+  # Coerce `padding: Int` -> `padding: Tuple[Int, Int]` if necessary.
+  (pad_h, pad_w) = (padding, padding) if isinstance(padding, int) else padding
   return jax.lax.reduce_window(
     coerce(input),
     -jnp.inf,
     jax.lax.max,
+    # Note that these settings all rely on input.ndim == 4:
     window_dimensions=(1, 1, kernel_size, kernel_size) if isinstance(kernel_size, int) else (1, 1) + kernel_size,
     window_strides=(1, 1, stride, stride) if isinstance(stride, int) else (1, 1) + stride,
-    padding=[(0, 0), (0, 0), (padding, padding), (padding, padding)]
-    if isinstance(padding, int)
-    else [(0, 0), (0, 0), (padding[0], padding[0]), (padding[1], padding[1])],
+    padding=[(0, 0), (0, 0), (pad_h, pad_h), (pad_w, pad_w)],
   )
 
 
