@@ -3,4 +3,4 @@
 dist/
 result
 __pycache__/
-.idea/
+.ruff_cache/

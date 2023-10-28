@@ -383,18 +383,21 @@ def test_vit_b16():
   # Models use different convolution backends and are too deep to compare gradients programmatically. But they line up
   # to reasonable expectations.
 
-def test_conv_transpose():
-  model = torch.nn.ConvTranspose2d(8, 4, kernel_size=(2, 2), stride=(2, 2), bias=False)
-  model.eval()
-
-  parameters = {k: t2j(v) for k, v in model.named_parameters()}
-  input_batch = random.normal(random.PRNGKey(123), (3, 8, 16, 16))
-  res_torch = model(j2t(input_batch))
-
-  jaxified_module = t2j(model)
-  res_jax = jaxified_module(input_batch, state_dict=parameters)
-  res_jax_jit = jit(jaxified_module)(input_batch, state_dict=parameters)
-
-  # Test forward pass with and without jax.jit
-  aac(res_jax, res_torch.numpy(force=True), atol=1e-1)
-  aac(res_jax_jit, res_torch.numpy(force=True), atol=1e-1)
+def test_conv_transpose2d():
+  for in_channels in [2, 4, 8]:
+    for out_channels in [2, 4, 8]:
+      for kernel_size in [(1, 1), (2, 2), (3, 3), 1, 2, 3, (1, 2), (2, 3)]:
+        for stride in [(1, 1), (2, 2), (3, 3), 1, 2, 3, (1, 2), (2, 3)]:
+          for bias in [False, True]:
+            if isinstance(kernel_size, int):
+               kernel_size = (kernel_size, kernel_size)
+            if isinstance(stride, int):
+               stride = (stride, stride)
+            output_padding = (max(stride[0]-kernel_size[0], 0), max(stride[1]-kernel_size[1], 0))
+            model = torch.nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride, bias=bias, output_padding=output_padding)
+            parameters = {k: t2j(v) for k, v in model.named_parameters()}
+            input_batch = random.normal(random.PRNGKey(123), (3, in_channels, 16, 16))
+            res_torch = model(j2t(input_batch))
+            jaxified_module = t2j(model)
+            res_jax = jaxified_module(input_batch, state_dict=parameters)
+            aac(res_jax, res_torch.numpy(force=True), atol=1e-1)

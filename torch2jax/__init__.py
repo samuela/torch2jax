@@ -3,8 +3,6 @@ import functools
 import math
 from typing import Optional, Sequence, Tuple, Union
 
-import numpy as np
-
 import jax
 import jax.dlpack
 import jax.numpy as jnp
@@ -198,8 +196,15 @@ def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
 
 @implements(torch.nn.functional.conv_transpose2d)
 def conv_transpose2d(input, weight, bias=None, stride=1, padding=0, output_padding=0, groups=1, dilation=1):
-  # Padding not performed properly yet, this is only tested for padding=0.
   # This implementation is taken from this PR https://github.com/google/jax/pull/5772
+
+  if isinstance(stride, int):
+    stride = (stride, stride)
+  output_padding_lax = (max(stride[0] - weight.shape[2], 0), max(stride[1] - weight.shape[3], 0))
+  if isinstance(output_padding, int):
+    output_padding = (output_padding, output_padding)
+  assert output_padding == output_padding_lax, f"lax conv_transpose assumes output_padding = " \
+                                               f"{output_padding_lax}, found {output_padding}"
 
   res = gradient_based_conv_transpose(
       lhs=coerce(input),
@@ -237,7 +242,7 @@ def _deconv_output_length(input_length, filter_size, padding, output_padding=Non
   # Infer length if output padding is None, else compute the exact length
   if output_padding is None:
     if padding == 'VALID':
-      length = input_length * stride + max(filter_size - stride, 0)
+      length = input_length * stride + jax.lax.max(filter_size - stride, 0)
     elif padding == 'SAME':
       length = input_length * stride
     else:
@@ -267,6 +272,7 @@ def _compute_adjusted_padding(input_size: int, output_size: int, kernel_size: in
   Ported from DeepMind Haiku.
   """
   kernel_size = (kernel_size - 1) * dilation + 1
+
   if padding == "VALID":
     expected_input_size = (output_size - kernel_size + stride) // stride
     if input_size != expected_input_size:
@@ -280,7 +286,7 @@ def _compute_adjusted_padding(input_size: int, output_size: int, kernel_size: in
       raise ValueError(f"The expected input size with the current set of input "
                        f"parameters is {expected_input_size} which doesn't "
                        f"match the actual input size {input_size}.")
-    padding_needed = max(0,
+    padding_needed = jax.lax.max(0,
                          (input_size - 1) * stride + kernel_size - output_size)
     padding_before = padding_needed // 2
   else:
@@ -366,9 +372,9 @@ def gradient_based_conv_transpose(lhs, rhs, strides: Sequence[int],
     else:
       raise ValueError('No 4+ dimensional dimension_number defaults.')
   dn = jax.lax.conv_dimension_numbers(lhs.shape, rhs.shape, dimension_numbers)
-  k_shape = np.take(rhs.shape, dn.rhs_spec)
+  k_shape = jnp.take(jnp.array(rhs.shape), jnp.array(dn.rhs_spec))
   k_sdims = k_shape[2:]  # type: ignore[index]
-  i_shape = np.take(lhs.shape, dn.lhs_spec)
+  i_shape = jnp.take(jnp.array(lhs.shape), jnp.array(dn.lhs_spec))
   i_sdims = i_shape[2:]  # type: ignore[index]
 
   # Calculate correct output shape given padding and strides.
@@ -399,8 +405,8 @@ def gradient_based_conv_transpose(lhs, rhs, strides: Sequence[int],
 
   if transpose_kernel:
     # flip spatial dims and swap input / output channel axes
-    rhs = _flip_axes(rhs, np.array(dn.rhs_spec)[2:])
-    rhs = np.swapaxes(rhs, dn.rhs_spec[0], dn.rhs_spec[1])
+    rhs = _flip_axes(rhs, dn.rhs_spec[2:])
+    rhs = jnp.swapaxes(rhs, dn.rhs_spec[0], dn.rhs_spec[1])
   return jax.lax.conv_general_dilated(lhs, rhs, one, pads, strides, dilation, dn,
                               precision=precision)
 
@@ -409,7 +415,7 @@ def _flip_axes(x, axes):
   Taken from https://github.com/google/jax/pull/5772
   Flip ndarray 'x' along each axis specified in axes tuple."""
   for axis in axes:
-    x = np.flip(x, axis)
+    x = jnp.flip(x, axis)
   return x
 
 @implements(torch.nn.functional.dropout)
