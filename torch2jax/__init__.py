@@ -1,7 +1,7 @@
 import copy
 import functools
 import math
-from typing import (Any, Optional, Sequence, Union, Tuple)
+from typing import Optional, Sequence, Tuple, Union
 
 import numpy as np
 
