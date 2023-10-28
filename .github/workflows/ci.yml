@@ -13,7 +13,9 @@ jobs:
       # This step should be a no-op on actual GitHub Actions, but it is necessary when using the "Micro" image with
       # https://github.com/nektos/act. See https://github.com/nektos/act/issues/107 and
       # https://github.com/nektos/act/issues/269.
-      - run: apt update && apt install -y curl git sudo xz-utils
+      #
+      # We use `sudo --version` to selectively run the install only when not on GitHub Actions.
+      - run: sudo --version || (apt update && apt install -y curl git sudo xz-utils)
 
       - uses: "cachix/install-nix-action@v22"
         with:
