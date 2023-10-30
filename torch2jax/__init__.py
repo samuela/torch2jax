@@ -233,23 +233,18 @@ def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
 @implements(torch.nn.functional.conv_transpose2d)
 def conv_transpose2d(input, weight, bias=None, stride=1, padding=0, output_padding=0, groups=1, dilation=1):
   # This implementation is taken from this PR https://github.com/google/jax/pull/5772
+  assert input.ndim == 4, "TODO: implement non-batched input"
+  assert groups == 1, "TODO: implement groups != 1"
 
-  if isinstance(stride, int):
-    stride = (stride, stride)
-  output_padding_lax = (max(stride[0] - weight.shape[2], 0), max(stride[1] - weight.shape[3], 0))
-  if isinstance(output_padding, int):
-    output_padding = (output_padding, output_padding)
-  assert output_padding == output_padding_lax, (
-    f"lax conv_transpose assumes output_padding = " f"{output_padding_lax}, found {output_padding}"
-  )
-
+  ph, pw = (padding, padding) if isinstance(padding, int) else padding
   res = gradient_based_conv_transpose(
     lhs=coerce(input),
     rhs=coerce(weight),
     strides=stride,
-    padding="VALID",
-    dimension_numbers=("NCHW", "OIHW", "NCHW"),
+    padding=[(ph, ph), (pw, pw)],
+    output_padding=output_padding,
     dilation=dilation,
+    dimension_numbers=("NCHW", "OIHW", "NCHW"),
   )
   if bias is not None:
     res += coerce(bias)[jnp.newaxis, :, jnp.newaxis, jnp.newaxis]
