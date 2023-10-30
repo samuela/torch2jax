@@ -441,22 +441,33 @@ def test_vit_b16():
 
 
 def test_conv_transpose2d():
-  for in_channels in [2, 4, 8]:
-    for out_channels in [2, 4, 8]:
-      for kernel_size in [(1, 1), (2, 2), (3, 3), 1, 2, 3, (1, 2), (2, 3)]:
-        for stride in [(1, 1), (2, 2), (3, 3), 1, 2, 3, (1, 2), (2, 3)]:
-          for bias in [False, True]:
-            if isinstance(kernel_size, int):
-              kernel_size = (kernel_size, kernel_size)
-            if isinstance(stride, int):
-              stride = (stride, stride)
-            output_padding = (max(stride[0] - kernel_size[0], 0), max(stride[1] - kernel_size[1], 0))
-            model = torch.nn.ConvTranspose2d(
-              in_channels, out_channels, kernel_size, stride, bias=bias, output_padding=output_padding
-            )
-            parameters = {k: t2j(v) for k, v in model.named_parameters()}
-            input_batch = random.normal(random.PRNGKey(123), (3, in_channels, 16, 16))
-            res_torch = model(j2t(input_batch))
-            jaxified_module = t2j(model)
-            res_jax = jaxified_module(input_batch, state_dict=parameters)
-            aac(res_jax, res_torch.numpy(force=True), atol=1e-1)
+  for in_channels in [1, 2]:
+    for out_channels in [1, 2]:
+      for kernel_size in [1, 2, (1, 2)]:
+        for stride in [1, 2, (1, 2)]:
+          for padding in [(0, 0), 1, 2, (1, 2)]:
+            for output_padding in [0, 1, 2, (1, 2)]:
+              for bias in [False, True]:
+                for dilation in [1, 2, (1, 2)]:
+                  model = torch.nn.ConvTranspose2d(
+                    in_channels,
+                    out_channels,
+                    kernel_size,
+                    stride=stride,
+                    padding=padding,
+                    output_padding=output_padding,
+                    bias=bias,
+                    dilation=dilation,
+                  )
+                  params = {k: random.normal(random.PRNGKey(123), v.shape) for k, v in model.named_parameters()}
+                  model.load_state_dict({k: j2t(v) for k, v in params.items()})
+
+                  input_batch = random.normal(random.PRNGKey(123), (3, in_channels, 16, 16))
+                  try:
+                    res_torch = model(j2t(input_batch))
+                  except RuntimeError:
+                    # RuntimeError: output padding must be smaller than either stride or dilation
+                    continue
+
+                  res_jax = t2j(model)(input_batch, state_dict=params)
+                  aac(res_jax, res_torch.numpy(force=True), atol=1e-4)
