@@ -72,19 +72,12 @@ class Torchish:
   def shape(self): return self.value.shape
   @property
   def T(self): return self.permute(*torch.arange(self.ndim - 1, -1, -1))
+  # fmt: on
 
   @property
   def is_nested(self):
     # NOTE: we disallow instantiating with NestedTensors.
     return False
-
-  def detach(self): return Torchish(jax.lax.stop_gradient(self.value))
-  def dim(self): return self.ndim
-  def item(self): return self.value.item()
-  def size(self): return self.shape
-  def view(self, *shape): return Torchish(jnp.reshape(self.value, shape))
-  reshape = view
-  # fmt: on
 
   def expand(self, *sizes):
     assert len(sizes) == self.ndim, "TODO: implement len(sizes) > self.ndim"
@@ -114,6 +107,12 @@ class Torchish:
   def pow(*args, **kwargs): return torch.pow(*args, **kwargs)
   def sum(*args, **kwargs): return torch.sum(*args, **kwargs)
   def transpose(*args, **kwargs): return torch.transpose(*args, **kwargs)
+  def detach(self): return Torchish(jax.lax.stop_gradient(self.value))
+  def dim(self): return self.ndim
+  def item(self): return self.value.item()
+  def size(self): return self.shape
+  def view(self, *shape): return Torchish(jnp.reshape(self.value, shape))
+  reshape = view
   # fmt: on
 
   def add_(self, other):
