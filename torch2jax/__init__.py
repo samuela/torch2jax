@@ -173,7 +173,6 @@ connect(torch.transpose, jnp.swapaxes)
 connect(torch.Tensor.mul, jnp.multiply)
 
 
-# TODO: test
 @implements(torch.cat)
 def cat(tensors, dim=0):
   return jnp.concatenate([coerce(x) for x in tensors], axis=dim)
