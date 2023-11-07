@@ -178,7 +178,6 @@ def cat(tensors, dim=0):
   return jnp.concatenate([coerce(x) for x in tensors], axis=dim)
 
 
-# TODO: test flatten
 @implements(torch.flatten)
 def flatten(input, start_dim=0, end_dim=-1):
   assert end_dim == -1, "TODO: implement end_dim"
