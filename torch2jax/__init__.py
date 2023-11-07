@@ -170,8 +170,6 @@ connect(torch.sum, jnp.sum)
 connect(torch.tanh, jnp.tanh)
 connect(torch.transpose, jnp.swapaxes)
 
-connect(torch.Tensor.mul, jnp.multiply)
-
 
 @implements(torch.cat)
 def cat(tensors, dim=0):
