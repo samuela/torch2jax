@@ -1,7 +1,7 @@
 import copy
 import functools
 import math
-from typing import Optional, Sequence, Tuple, Union
+from typing import Literal, Optional, Sequence, Tuple, Union
 
 import jax
 import jax.dlpack
@@ -204,10 +204,20 @@ def batch_norm(input, running_mean, running_var, weight=None, bias=None, trainin
 
 
 @implements(torch.nn.functional.conv2d)
-def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
+def conv2d(
+  input,
+  weight,
+  bias=None,
+  stride=1,
+  padding: Union[int, Tuple[int, int], Literal["same", "valid"]] = 0,
+  dilation=1,
+  groups=1,
+):
   assert groups == 1, "conv2d with groups != 1 is not yet supported"
 
-  # jax.lax.conv_general_dilated supports different lo/hi padding, whereas PyTorch applies the same padding on both sides.
+  # jax.lax.conv_general_dilated supports different lo/hi padding, whereas PyTorch applies the same padding on both
+  # sides. Note that we can't use the same trick as in conv_transpose2d since we also have to support "valid" and "same"
+  # values for `padding`.
   if isinstance(padding, tuple):
     p1, p2 = padding
     padding = [(p1, p1), (p2, p2)]
