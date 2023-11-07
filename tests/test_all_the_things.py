@@ -122,6 +122,10 @@ def test_oneliners():
 
   t2j_function_test(lambda x: x.expand(5, -1, -1), [(1, 3, 2)])
 
+  t2j_function_test(lambda x: torch.transpose(x, 0, 1), [(2, 3)])
+  t2j_function_test(lambda x: torch.transpose(x, 0, 2), [(2, 3, 5)])
+  t2j_function_test(lambda x: torch.transpose(x, 2, 1), [(2, 3, 5)])
+
 
 def test_detach():
   t2j_function_test(lambda x: x.detach() ** 2, [()])

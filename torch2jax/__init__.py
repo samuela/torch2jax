@@ -168,7 +168,6 @@ connect(torch.sigmoid, jax.nn.sigmoid)
 connect(torch.sqrt, jnp.sqrt)
 connect(torch.sum, jnp.sum)
 connect(torch.tanh, jnp.tanh)
-# TODO: test this... it should need dont_coerce_argnums
 connect(torch.transpose, jnp.swapaxes)
 
 connect(torch.Tensor.mul, jnp.multiply)
