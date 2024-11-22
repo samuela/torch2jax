@@ -26,6 +26,11 @@ class RngPooper:
     return rng_key
 
 
+def test_t2j_array():
+  # See https://github.com/samuela/torch2jax/issues/7
+  aac(t2j(torch.eye(3).unsqueeze(0)), jnp.eye(3)[jnp.newaxis, ...])
+
+
 def t2j_function_test(f, input_shapes, rng=random.PRNGKey(123), num_tests=5, **assert_kwargs):
   for test_rng in random.split(rng, num_tests):
     inputs = [random.normal(rng, shape) for rng, shape in zip(random.split(test_rng, len(input_shapes)), input_shapes)]
