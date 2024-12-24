@@ -4,75 +4,13 @@
 
 import socket
 
-import jax.numpy as jnp
-import numpy as np
 import pytest
 import torch
-from jax import grad, jit, random, vmap
+from jax import grad, jit, random
 
 from torch2jax import j2t, t2j
 
-aac = np.testing.assert_allclose
-
-
-class RngPooper:
-  """A stateful wrapper around stateless random.PRNGKey's."""
-
-  def __init__(self, init_rng):
-    self.rng = init_rng
-
-  def poop(self):
-    self.rng, rng_key = random.split(self.rng)
-    return rng_key
-
-
-def test_t2j_array():
-  # See https://github.com/samuela/torch2jax/issues/7
-  aac(t2j(torch.eye(3).unsqueeze(0)), jnp.eye(3)[jnp.newaxis, ...])
-
-
-def t2j_function_test(f, input_shapes, rng=random.PRNGKey(123), num_tests=5, **assert_kwargs):
-  for test_rng in random.split(rng, num_tests):
-    inputs = [random.normal(rng, shape) for rng, shape in zip(random.split(test_rng, len(input_shapes)), input_shapes)]
-    torch_output = f(*map(j2t, inputs))
-    aac(t2j(f)(*inputs), torch_output, **assert_kwargs)
-    aac(jit(t2j(f))(*inputs), torch_output, **assert_kwargs)
-
-    # TODO: consider doing this for all functions by doing eg f_ = lambda x: torch.sum(f(x) ** 2)
-    if torch_output.numel() == 1:
-      f_ = lambda x: f(x).flatten()[0]
-
-      # Can only calculate gradients on scalar-output functions
-      if len(input_shapes) > 1:
-        map(
-          lambda x, y: aac(x.squeeze(), y.squeeze(), **assert_kwargs),
-          zip(
-            grad(t2j(f_))(*inputs),
-            torch.func.grad(f_, argnums=tuple(range(len(input_shapes))))(*map(j2t, inputs)),
-          ),
-        )
-      else:
-        [input] = inputs
-        aac(
-          grad(t2j(f_))(input).squeeze(),
-          torch.func.grad(f_)(j2t(input)).squeeze(),
-          **assert_kwargs,
-        )
-
-
-def test_inplace():
-  def f(x):
-    x = x + torch.Tensor([3])
-    x.add_(1)
-    x.sub_(2.3)
-    x.mul_(3.4)
-    x.div_(5.6)
-    return x
-
-  t2j_function_test(f, [()], atol=1e-6)
-  t2j_function_test(f, [(3,)], atol=1e-6)
-  t2j_function_test(f, [(3, 5)], atol=1e-6)
-  print(vmap(t2j(f))(jnp.array([1, 2, 3])))
+from .utils import RngPooper, aac, t2j_function_test
 
 
 def test_scaled_dot_product_attention():
@@ -92,70 +30,6 @@ def test_scaled_dot_product_attention():
     atol=1e-5,
   )
   # TODO test MHA without batch dimension
-
-
-def test_oneliners():
-  t2j_function_test(lambda x: torch.pow(x, 2), [()])
-  t2j_function_test(lambda x: torch.pow(x, 2), [(3,)])
-  t2j_function_test(lambda x: x.pow(3), [()])
-  t2j_function_test(lambda x: x.pow(3), [(3,)])
-  t2j_function_test(lambda x: x.pow(3).sum(), [(3,)], atol=1e-6)
-  t2j_function_test(lambda x: 3 * torch.mean(x), [(5,)], atol=1e-6)
-  t2j_function_test(lambda x: 3.0 * x.mean(), [(5,)], atol=1e-6)
-  t2j_function_test(torch.add, [(3,), (3,)])
-  t2j_function_test(torch.add, [(3, 1), (1, 3)])
-  t2j_function_test(torch.mean, [(5,)], atol=1e-6)
-  t2j_function_test(torch.sqrt, [(5,)])
-  t2j_function_test(torch.sum, [(5,)], atol=1e-6)
-  t2j_function_test(lambda x: 3 * x.sum(), [(5,)], atol=1e-6)
-  t2j_function_test(lambda x: 3 * torch.sum(x), [(5,)], atol=1e-6)
-
-  # Seems like an innocent test, but this can cause segfaults when using dlpack in t2j_array
-  t2j_function_test(lambda x: torch.Tensor([3.0]) * torch.mean(x), [(5,)], atol=1e-6)
-
-  t2j_function_test(lambda x: torch.mul(torch.Tensor([3.0]), torch.mean(x)), [(5,)], atol=1e-6)
-  t2j_function_test(lambda x: torch.Tensor([3]) * torch.mean(torch.sqrt(x)), [(3,)])
-
-  t2j_function_test(lambda x: x.view(2, 2) @ x.view(2, 2).T, [(2, 2)])
-  t2j_function_test(lambda x: x.view(2, 2) @ x.view(2, 2).T, [(4,)])
-  t2j_function_test(lambda x: x.view(3, 4), [(12,)])
-  t2j_function_test(lambda x: x.view(3, 4), [(4, 3)])
-
-  t2j_function_test(lambda x: x.permute(1, 0), [(4, 3)])
-  t2j_function_test(lambda x: x.permute(1, 0, 2), [(4, 3, 2)])
-  t2j_function_test(lambda x: x.permute(2, 0, 1), [(4, 3, 2)])
-
-  t2j_function_test(lambda x: x.expand(5, -1, -1), [(1, 3, 2)])
-
-  t2j_function_test(lambda x: torch.transpose(x, 0, 1), [(2, 3)])
-  t2j_function_test(lambda x: torch.transpose(x, 0, 2), [(2, 3, 5)])
-  t2j_function_test(lambda x: torch.transpose(x, 2, 1), [(2, 3, 5)])
-
-  t2j_function_test(lambda x, y: torch.cat((x, y)), [(2, 3), (5, 3)])
-  t2j_function_test(lambda x, y: torch.cat((x, y), dim=-1), [(2, 3), (2, 5)])
-
-  t2j_function_test(torch.flatten, [(2, 3, 5)])
-  t2j_function_test(lambda x: torch.flatten(x, start_dim=1), [(2, 3, 5)])
-  t2j_function_test(lambda x: torch.flatten(x, start_dim=2), [(2, 3, 5, 7)])
-
-
-def test_detach():
-  t2j_function_test(lambda x: x.detach() ** 2, [()])
-  t2j_function_test(lambda x: x.detach() ** 2, [(3,)])
-
-  # This results in a shapes mismatch due to differences in the shapes that jax.grad and torch.func.grad output.
-  #   t2j_function_test(lambda x: torch.sum(x.detach() ** 2), [(3,)])
-  # so instead we do:
-  aac(grad(t2j(lambda x: torch.sum(x.detach() ** 2)))(2.1 * jnp.arange(3)), 0)
-
-
-def test_item():
-  aac(t2j(lambda x: x.item() * x)(jnp.array(3)), 9)
-  with pytest.raises(Exception):
-    jit(t2j(lambda x: x.item() * x))(jnp.array(3))
-
-  with pytest.raises(Exception):
-    grad(t2j(lambda x: x.item() * x))(jnp.array(3))
 
 
 def test_AdaptiveAvgPool2d():

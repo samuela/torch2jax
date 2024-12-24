@@ -1,12 +1,43 @@
+# TODO: do we still need coerce? if so, why?
+# TODO: think about override torch.Tensor somehow to alert users that it's broken. turns out there's more than one way to run into this footgun
 import copy
 import functools
 import math
+from contextlib import contextmanager
 from typing import Literal, Optional, Sequence, Tuple, Union
 
 import jax
 import jax.dlpack
 import jax.numpy as jnp
 import torch
+from torch.overrides import TorchFunctionMode, resolve_name
+
+# class RngPooper:
+#   """A stateful wrapper around stateless random.PRNGKey's."""
+
+#   def __init__(self, init_rng):
+#     self.rng = init_rng
+
+#   def poop(self) -> jax.random.PRNGKey:
+#     self.rng, rng_key = jax.random.split(self.rng)
+#     return rng_key
+
+
+# _RNG_POOPER_STACK = []
+
+
+# def mk_rng() -> jax.random.PRNGKey:
+#   assert len(_RNG_POOPER_STACK) > 0, "attempted mk_rng() outside of a RngPooperContext"
+#   return _RNG_POOPER_STACK[-1].poop()
+
+
+# @contextmanager
+# def RngPooperContext(value: RngPooper):
+#   _RNG_POOPER_STACK.append(value)
+#   try:
+#     yield
+#   finally:
+#     _RNG_POOPER_STACK.pop()
 
 
 def t2j_array(torch_array):
@@ -43,46 +74,55 @@ def j2t_array(jax_array):
 HANDLED_FUNCTIONS = {}
 
 
+# must either subclass or impl __torch_function__
 class Torchish:
   def __init__(self, value):
     if isinstance(value, Torchish):
+      # We use Torchish.__init__ as a coercion function to take arbitrary values -- scalars, Torchish objects, and
+      # anything else that torch accepts as a function argument... TODO
       self.value = value.value
     elif isinstance(value, jnp.ndarray) or isinstance(value, int) or isinstance(value, float):
       # See https://github.com/google/jax/issues/2115 re `isinstance(value, jnp.ndarray)`.
       self.value = value
-    elif isinstance(value, torch.Tensor):
-      assert not value.requires_grad, "cannot Torchish-ify requires_grad Tensors"
-      assert not value.is_nested, "Torchish does not support NestedTensors"
-      self.value = t2j_array(value)
+    # elif isinstance(value, torch.Tensor):
+
     else:
       raise NotImplementedError(
         f"Attempted to instantiate Torchish with {value}. Don't know what to do with that. Torchish supports int, float, jax.numpy.ndarray, and torch.Tensor values."
       )
 
+  # TODO: get rid of this and move everything to the Mode's __torch_function__
   @classmethod
   def __torch_function__(cls, func, types, args=(), kwargs=None):
-    if kwargs is None:
-      kwargs = {}
-    if func not in HANDLED_FUNCTIONS or not all(issubclass(t, (torch.Tensor, Torchish)) for t in types):
-      print(
-        "ERROR: you tried to do something not supported yet! Open a PR or issue on GitHub if you believe this should be included in torch2jax."
-      )
-      return NotImplemented
-    # NOTE: some functions, like multi_head_attention_forward return a tuple of torch.Tensor's, and will even return
-    # `None` in some configurations. so we cannot necessarily `Torchish` the output of `HANDLED_FUNCTIONS[func]`. Instead
-    # the handler functions are responsible for outputting Torchish objects where appropriate.
-    return HANDLED_FUNCTIONS[func](*args, **kwargs)
+    raise NotImplementedError(f"Torchish.__torch_function__: {func}")
+
+  #   if kwargs is None:
+  #     kwargs = {}
+  #   if func not in HANDLED_FUNCTIONS or not all(issubclass(t, (torch.Tensor, Torchish)) for t in types):
+  #     print(
+  #       "ERROR: you tried to do something not supported yet! Open a PR or issue on GitHub if you believe this should be included in torch2jax."
+  #     )
+  #     return NotImplemented
+  #   # NOTE: some functions, like multi_head_attention_forward return a tuple of torch.Tensor's, and will even return
+  #   # `None` in some configurations. so we cannot necessarily `Torchish` the output of `HANDLED_FUNCTIONS[func]`. Instead
+  #   # the handler functions are responsible for outputting Torchish objects where appropriate.
+  #   return HANDLED_FUNCTIONS[func](*args, **kwargs)
 
   # fmt: off
   @property
-  def dtype(self): return self.value.dtype
+  def dtype(self) -> torch.dtype: return j2t_dtype(self.value.dtype)
   @property
-  def ndim(self): return len(self.value.shape)
+  def ndim(self) -> int: return len(self.value.shape)
   @property
   def shape(self): return self.value.shape
-  @property
-  def T(self): return self.permute(*torch.arange(self.ndim - 1, -1, -1))
   # fmt: on
+
+  @property
+  def T(self):
+    # Infinite hang, disturbing:
+    # return self.permute(*torch.tensor([1, 0]))
+
+    return self.permute(*list(range(self.ndim))[::-1])
 
   @property
   def is_nested(self):
@@ -113,7 +153,9 @@ class Torchish:
   # For some reason `foo = torch.foo` doesn't work on these
   def flatten(*args, **kwargs): return torch.flatten(*args, **kwargs)
   def mean(*args, **kwargs): return torch.mean(*args, **kwargs)
-  def permute(self, *shape): return torch.permute(self, shape)
+  def permute(self, *shape):
+    # raise
+    return torch.permute(self, shape)
   def pow(*args, **kwargs): return torch.pow(*args, **kwargs)
   def sum(*args, **kwargs): return torch.sum(*args, **kwargs)
   def transpose(*args, **kwargs): return torch.transpose(*args, **kwargs)
@@ -141,12 +183,24 @@ class Torchish:
     self.value /= other
     return self
 
+  def uniform_(self, a, b):
+    # self.value = jax.random.uniform(TODO, self.shape, minval=a, maxval=b)
+    # return self
+    # torch.uniform(self, a, b, out=self)
+    # return self
+    raise NotImplementedError
+
 
 coerce = lambda x: Torchish(x).value
 
 
+def _args_to_shape(args):
+  assert len(args) >= 1
+  return args if isinstance(args[0], int) else args[0]
+
+
 def implements(torch_function, Torchishify_output=True):
-  """Register a torch function override for Torchish"""
+  """Register a torch function override"""
 
   def decorator(func):
     func1 = (lambda *args, **kwargs: Torchish(func(*args, **kwargs))) if Torchishify_output else func
@@ -160,10 +214,10 @@ def implements(torch_function, Torchishify_output=True):
 def auto_implements(torch_function, jax_function, dont_coerce_argnums=()):
   @implements(torch_function)
   def fn(*args, **kwargs):
-    # NOTE: we don't coerce kwargs! So far this has not been problematic.
+    # NOTE: we don't coerce values in kwargs! So far this has not been problematic.
     return jax_function(
       *(arg if i in dont_coerce_argnums else coerce(arg) for i, arg in enumerate(args)),
-      **kwargs,
+      **{k: v for k, v in kwargs.items() if k != "__t2j_mk_rng__"},
     )
 
 
@@ -172,7 +226,7 @@ auto_implements(torch.exp, jnp.exp)
 auto_implements(torch.nn.functional.gelu, jax.nn.gelu)
 auto_implements(torch.mean, jnp.mean)
 auto_implements(torch.mul, jnp.multiply)
-auto_implements(torch.permute, jnp.transpose, dont_coerce_argnums=(1, 2))
+auto_implements(torch.permute, jnp.transpose, dont_coerce_argnums=(1, 2))  # TODO: do we need argnum 2?
 auto_implements(torch.pow, jnp.power)
 auto_implements(torch.sigmoid, jax.nn.sigmoid)
 auto_implements(torch.sqrt, jnp.sqrt)
@@ -181,26 +235,229 @@ auto_implements(torch.tanh, jnp.tanh)
 auto_implements(torch.transpose, jnp.swapaxes)
 
 
+@implements(torch.arange)
+def arange(*args, **kwargs):
+  assert kwargs.get("out", None) is None, "TODO: implement `out`"
+  dtype = t2j_dtype(
+    kwargs.get(
+      "dtype",
+      torch.get_default_dtype()
+      if (
+        isinstance(args[0], float)
+        or (len(args) > 1 and isinstance(args[1], float))
+        or (len(args) > 2 and isinstance(args[2], float))
+      )
+      else torch.int64,
+    )
+  )
+  # TODO: test this with kwargs
+  if len(args) == 1:
+    return jnp.arange(args[0], dtype=dtype)
+  elif len(args) == 2:
+    return jnp.arange(args[0], args[1], dtype=dtype)
+  elif len(args) == 3:
+    return jnp.arange(args[0], args[1], args[2], dtype=dtype)
+  else:
+    raise ValueError("torch.arange takes 1-3 arguments")
+
+
+@implements(torch.bernoulli)
+def bernoulli(input, generator=None, out=None, __t2j_mk_rng__=None):
+  assert generator is None, "TODO: implement `generator`"
+  assert out is None, "TODO: implement `out`"
+  return jax.random.bernoulli(__t2j_mk_rng__(), p=input)
+
+
 @implements(torch.cat)
-def cat(tensors, dim=0):
+def cat(tensors, dim=0, __t2j_mk_rng__=None):
   return jnp.concatenate([coerce(x) for x in tensors], axis=dim)
 
 
+@implements(torch.empty)
+def empty(
+  *args,
+  out=None,
+  dtype=None,
+  layout=torch.strided,
+  device=None,
+  requires_grad=False,
+  pin_memory=False,
+  memory_format=torch.contiguous_format,
+  __t2j_mk_rng__=None,
+):
+  assert out is None, "TODO: implement `out`"
+  return jnp.empty(_args_to_shape(args), dtype=t2j_dtype(dtype or torch.get_default_dtype()))
+
+
 @implements(torch.flatten)
-def flatten(input, start_dim=0, end_dim=-1):
+def flatten(input, start_dim=0, end_dim=-1, __t2j_mk_rng__=None):
   assert end_dim == -1, "TODO: implement end_dim"
   return jnp.reshape(coerce(input), input.shape[:start_dim] + (-1,))
 
 
+@implements(torch.multinomial)
+def multinomial(*args, **kwargs):
+  assert kwargs.get("generator", None) is None, "TODO: implement `generator`"
+  assert kwargs.get("out", None) is None, "TODO: implement `out`"
+  # assert kwargs.get("replacement", False) is False, "`replacement == False` is not yet supported"
+  # return jax.random.categorical(
+  #   self._split_rng(),
+  #   logits=args[0].logits if isinstance(args[0], distributions.Categorical) else args[0],
+  #   shape=(args[1],),
+  # )
+
+  # TODO: implement this with jax.random.choice and vmap
+  raise
+
+
+@implements(torch.normal)
+def normal(*args, **kwargs):
+  assert kwargs.get("generator", None) is None, "TODO: implement `generator`"
+  assert kwargs.get("out", None) is None, "TODO: implement `out`"
+  assert len(args) <= 3, f"too many arguments to normal: {args}"
+
+  mean = kwargs.get("mean", args[0] if len(args) > 0 else 0.0)
+  std = kwargs.get("std", args[1] if len(args) > 1 else 1.0)
+  shape = kwargs.get(
+    "size",
+    args[2]
+    if len(args) == 3
+    else (mean.shape if isinstance(mean, Torchish) else (std.shape if isinstance(std, Torchish) else None)),
+  )
+
+  return (
+    jax.random.normal(
+      kwargs["__t2j_mk_rng__"](),
+      shape=shape,
+      dtype=t2j_dtype(kwargs.get("dtype", torch.get_default_dtype())),
+    )
+    * std
+    + mean
+  )
+
+
+@implements(torch.ones)
+def ones(*args, out=None, dtype=None, layout=torch.strided, device=None, requires_grad=False, __t2j_mk_rng__=None):
+  assert out is None, "TODO: implement out"
+
+  # dt = t2j_dtype(dtype or torch.get_default_dtype())
+  # if len(args) == 1:
+  #   return jnp.ones(args[0], dtype=dt)
+  # else:
+  #   return jnp.ones(args, dtype=dt)
+  return jnp.ones(_args_to_shape(args), dtype=t2j_dtype(dtype or torch.get_default_dtype()))
+
+
+@implements(torch.ones_like)
+def ones_like(
+  input,
+  dtype=None,
+  layout=None,
+  device=None,
+  requires_grad=False,
+  memory_format=torch.preserve_format,
+  __t2j_mk_rng__=None,
+):
+  assert not requires_grad
+  return jnp.ones_like(input, dtype=t2j_dtype(dtype or input.dtype))
+
+
+@implements(torch.poisson)
+def poisson(input, generator=None, __t2j_mk_rng__=None):
+  assert generator is None, "TODO: implement `generator`"
+  return jax.random.poisson(__t2j_mk_rng__(), lam=input)
+
+
+@implements(torch.rand)
+def rand(
+  *args,
+  generator=None,
+  out=None,
+  dtype=None,
+  layout=torch.strided,
+  device=None,
+  requires_grad=False,
+  pin_memory=False,
+  __t2j_mk_rng__=None,
+):
+  assert generator is None, "TODO: implement `generator`"
+  assert out is None, "TODO: implement `out`"
+  return jax.random.uniform(
+    __t2j_mk_rng__(),
+    shape=_args_to_shape(args),
+    dtype=t2j_dtype(dtype or torch.get_default_dtype()),
+  )
+
+
+@implements(torch.randn)
+def randn(
+  *args,
+  generator=None,
+  out=None,
+  dtype=None,
+  layout=torch.strided,
+  device=None,
+  requires_grad=False,
+  pin_memory=False,
+  __t2j_mk_rng__=None,
+):
+  assert generator is None, "TODO: implement `generator`"
+  assert out is None, "TODO: implement `out`"
+  return jax.random.normal(
+    __t2j_mk_rng__(),
+    shape=_args_to_shape(args),
+    dtype=t2j_dtype(dtype or torch.get_default_dtype()),
+  )
+
+
+@implements(torch.tensor)
+def tensor(data, dtype=None, device=None, requires_grad=False, pin_memory=False, __t2j_mk_rng__=None):
+  assert not requires_grad
+  return jnp.array(data, dtype=t2j_dtype(dtype or torch.get_default_dtype()))
+
+
+@implements(torch.zeros)
+def zeros(*args, out=None, dtype=None, layout=torch.strided, device=None, requires_grad=False, __t2j_mk_rng__=None):
+  assert out is None, "TODO: implement out"
+  assert not requires_grad
+
+  # dt = t2j_dtype(dtype or torch.get_default_dtype())
+  # if len(args) == 1:
+  #   return jnp.zeros(args[0], dtype=dt)
+  # else:
+  #   return jnp.zeros(args, dtype=dt)
+  return jnp.zeros(_args_to_shape(args), dtype=t2j_dtype(dtype or torch.get_default_dtype()))
+
+
+@implements(torch.zeros_like)
+def zeros_like(
+  input,
+  dtype=None,
+  layout=None,
+  device=None,
+  requires_grad=False,
+  memory_format=torch.preserve_format,
+  __t2j_mk_rng__=None,
+):
+  assert not requires_grad
+  return jnp.zeros_like(input, dtype=t2j_dtype(dtype or input.dtype))
+
+
+################################################################################
+# torch.nn
+
+
 @implements(torch.nn.functional.adaptive_avg_pool2d)
-def adaptive_avg_pool2d(input, output_size):
+def adaptive_avg_pool2d(input, output_size, __t2j_mk_rng__=None):
   assert output_size == 1 or output_size == (1, 1), "TODO: implement output_size != 1"
   assert input.ndim == 4, "TODO: implement non-batched input"
   return jnp.mean(coerce(input), axis=(2, 3), keepdims=True)
 
 
 @implements(torch.nn.functional.batch_norm)
-def batch_norm(input, running_mean, running_var, weight=None, bias=None, training=False, momentum=0.1, eps=1e-5):
+def batch_norm(
+  input, running_mean, running_var, weight=None, bias=None, training=False, momentum=0.1, eps=1e-5, __t2j_mk_rng__=None
+):
   assert not training, "torch.nn.functional.batch_norm is only supported in eval()-mode"
   newshape = (1, -1) + (1,) * (len(input.shape) - 2)
   res = (coerce(input) - coerce(running_mean).reshape(newshape)) * jax.lax.rsqrt(
@@ -222,6 +479,7 @@ def conv2d(
   padding: Union[int, Tuple[int, int], Literal["same", "valid"]] = 0,
   dilation=1,
   groups=1,
+  __t2j_mk_rng__=None,
 ):
   assert groups == 1, "conv2d with groups != 1 is not yet supported"
 
@@ -245,7 +503,9 @@ def conv2d(
 
 
 @implements(torch.nn.functional.conv_transpose2d)
-def conv_transpose2d(input, weight, bias=None, stride=1, padding=0, output_padding=0, groups=1, dilation=1):
+def conv_transpose2d(
+  input, weight, bias=None, stride=1, padding=0, output_padding=0, groups=1, dilation=1, __t2j_mk_rng__=None
+):
   # This implementation is taken from this PR https://github.com/google/jax/pull/5772
   assert input.ndim == 4, "TODO: implement non-batched input"
   assert groups == 1, "TODO: implement groups != 1"
@@ -265,7 +525,9 @@ def conv_transpose2d(input, weight, bias=None, stride=1, padding=0, output_paddi
   return res
 
 
-def _deconv_output_length(input_length, filter_size, padding, output_padding=None, stride=0, dilation=1):
+def _deconv_output_length(
+  input_length, filter_size, padding, output_padding=None, stride=0, dilation=1, __t2j_mk_rng__=None
+):
   """Taken from https://github.com/google/jax/pull/5772
   Determines the output length of a transposed convolution given the input length.
   Function modified from Keras.
@@ -481,14 +743,14 @@ def _flip_axes(x, axes):
 
 
 @implements(torch.nn.functional.dropout)
-def dropout(input, p=0.5, training=True, inplace=False):
+def dropout(input, p=0.5, training=True, inplace=False, __t2j_mk_rng__=None):
   assert not training, "TODO: implement dropout=True"
   assert not inplace, "TODO: implement inplace=True"
   return input
 
 
 @implements(torch.nn.functional.layer_norm)
-def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-05):
+def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-05, __t2j_mk_rng__=None):
   input = coerce(input)
 
   d = len(normalized_shape)
@@ -506,7 +768,7 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-05):
 
 
 @implements(torch.nn.functional.linear)
-def linear(input, weight, bias=None):
+def linear(input, weight, bias=None, __t2j_mk_rng__=None):
   if bias is None:
     return coerce(input) @ coerce(weight).T
   else:
@@ -514,7 +776,9 @@ def linear(input, weight, bias=None):
 
 
 @implements(torch.nn.functional.max_pool1d)
-def max_pool1d(input, kernel_size, stride=None, padding=0, dilation=1, ceil_mode=False, return_indices=False):
+def max_pool1d(
+  input, kernel_size, stride=None, padding=0, dilation=1, ceil_mode=False, return_indices=False, __t2j_mk_rng__=None
+):
   assert dilation == 1, "TODO: implement dilation != 1"
   assert not ceil_mode, "TODO: implement ceil_mode"
   assert not return_indices, "TODO: implement return_indices"
@@ -530,7 +794,9 @@ def max_pool1d(input, kernel_size, stride=None, padding=0, dilation=1, ceil_mode
 
 
 @implements(torch.nn.functional.max_pool2d)
-def max_pool2d(input, kernel_size, stride=None, padding=0, dilation=1, ceil_mode=False, return_indices=False):
+def max_pool2d(
+  input, kernel_size, stride=None, padding=0, dilation=1, ceil_mode=False, return_indices=False, __t2j_mk_rng__=None
+):
   assert input.ndim == 4, "TODO: implement non-batched input"
   assert dilation == 1, "TODO: implement dilation != 1"
   assert not ceil_mode, "TODO: implement ceil_mode"
@@ -550,7 +816,7 @@ def max_pool2d(input, kernel_size, stride=None, padding=0, dilation=1, ceil_mode
 
 
 @implements(torch.nn.functional.relu)
-def relu(x, inplace=False):
+def relu(x, inplace=False, __t2j_mk_rng__=None):
   # Can't use `auto_implements` since jax.nn.relu does not have an `inplace` option.
   if inplace:
     assert isinstance(x, Torchish)
@@ -561,7 +827,9 @@ def relu(x, inplace=False):
 
 
 @implements(torch.nn.functional.scaled_dot_product_attention)
-def scaled_dot_product_attention(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False):
+def scaled_dot_product_attention(
+  query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, __t2j_mk_rng__=None
+):
   assert attn_mask is None, "TODO: implement attn_mask"
   assert dropout_p == 0.0, "TODO: implement dropout"
   assert not is_causal, "TODO: implement is_causal"
@@ -612,6 +880,7 @@ def multi_head_attention_forward(
   static_v: Optional[torch.Tensor] = None,
   average_attn_weights: bool = True,
   is_causal: bool = False,
+  __t2j_mk_rng__=None,
 ):
   assert in_proj_weight is not None, "TODO: implement in_proj_weight=None"
   assert in_proj_bias is not None, "TODO: implement in_proj_bias=None"
@@ -664,9 +933,147 @@ def multi_head_attention_forward(
   return Torchish(jnp.swapaxes(out, 0, 1)), None
 
 
-# It might be nice to use torch.func.functionalize, but it so far seems buggy (FunctionalTensor.numpy() gives incorrect
-# results) and unnecessary.
-t2j_function = lambda f: lambda *args: f(*jax.tree_util.tree_map(Torchish, args)).value
+class TorchishMode(TorchFunctionMode):
+  def __init__(self, rng):
+    self.rng = rng
+
+  def _split_rng(self):
+    assert self.rng is not None, "attempted to run random operation without providing `rng`"
+    self.rng, rng = jax.random.split(self.rng)
+    return rng
+
+  def __torch_function__(self, func, types, args, kwargs=None):
+    # print(f"Function Log: {resolve_name(func)}(*{args}, **{kwargs}) with types {types}")
+
+    kwargs = kwargs or {}
+
+    if func in HANDLED_FUNCTIONS:
+      return HANDLED_FUNCTIONS[func](*args, **{**kwargs, "__t2j_mk_rng__": lambda: self._split_rng()})
+    else:
+      raise NotImplementedError(
+        f"Unhandled function call: {resolve_name(func)}(*{args}, **{kwargs}) with types {types}. Please submit a bug report at https://github.com/samuela/torch2jax/issues."
+      )
+
+    ############################################################################
+    # random functions
+
+    if func == torch.rand_like:
+      input = kwargs.get("input", args[0])
+      return Torchish(
+        jax.random.uniform(
+          self._split_rng(),
+          shape=input.shape,
+          dtype=t2j_dtype(kwargs.get("dtype", input.dtype)),
+        )
+      )
+
+    if func == torch.randint:
+      assert kwargs.get("generator", None) is None, "TODO: implement `generator`"
+      assert kwargs.get("out", None) is None, "TODO: implement `out`"
+      low = kwargs.get("low", args[0] if len(args) == 3 else 0)
+      high = kwargs.get("high", args[1] if len(args) == 3 else args[0])
+      shape = kwargs.get("size", args[-1])
+      return Torchish(
+        jax.random.randint(
+          self._split_rng(),
+          shape=shape,
+          minval=low,
+          maxval=high,
+          dtype=t2j_dtype(kwargs.get("dtype", torch.int64)),
+        )
+      )
+
+    if func == torch.randint_like:
+      input = kwargs.get("input", args[0])
+      low = kwargs.get("low", args[1] if len(args) == 3 else 0)
+      high = kwargs.get("high", args[2] if len(args) == 3 else args[1])
+      return Torchish(
+        jax.random.randint(
+          self._split_rng(),
+          shape=input.shape,
+          minval=low,
+          maxval=high,
+          dtype=t2j_dtype(kwargs.get("dtype", input.dtype)),
+        )
+      )
+
+    # if func == torch.randn:
+
+    if func == torch.randn_like:
+      input = kwargs.get("input", args[0])
+      return Torchish(
+        jax.random.normal(
+          self._split_rng(),
+          shape=input.shape,
+          dtype=t2j_dtype(kwargs.get("dtype", input.dtype)),
+        )
+      )
+
+    if func == torch.randperm:
+      assert kwargs.get("generator", None) is None, "TODO: implement `generator`"
+      assert kwargs.get("out", None) is None, "TODO: implement `out`"
+      # Note: torch allows specifying a dtype, but JAX does not. We just ignore.
+      n = kwargs.get("n", args[0])
+      return Torchish(jax.random.permutation(self._split_rng(), n))
+
+    else:
+      print(f"[torch2jax] falling back to pytorch impl for {resolve_name(func)}(*{args}, **{kwargs}) === {types}")
+      return func(*args, **(kwargs or {}))
+
+
+@contextmanager
+def override_Tensor_constructor():
+  """Context manager to temporarily override torch.Tensor.__new__ construction
+  while preserving isinstance checks and inheritance."""
+  original_new = torch.Tensor.__new__
+
+  @functools.wraps(original_new)
+  def custom_new(cls, *args, **kwargs):
+    raise ValueError(
+      "Attempted to call `torch.Tensor.__new__`. You're probably seeing this error message because you called `torch.Tensor(...)` instead of `torch.tensor(...)` (note capitalization!). The `torch.Tensor(...)` constructor is deprecated and does not work with __torch_function__ and torch2jax. Please migrate to `torch.tensor(...)`."
+    )
+
+  torch.Tensor.__new__ = custom_new
+
+  try:
+    yield
+  finally:
+    torch.Tensor.__new__ = original_new
+
+
+def t2j_function(f):
+  def f_jax(*args, rng=None):
+    torch_args = jax.tree_util.tree_map(Torchish, args)
+    with override_Tensor_constructor():
+      with TorchishMode(rng):
+        out = f(*torch_args)
+    return out.value
+
+  return f_jax
+
+
+TJ_DTYPE_ASSOCIATION = [
+  (torch.float16, jnp.float16),
+  (torch.float32, jnp.float32),
+  (torch.float64, jnp.float64),
+  (torch.int8, jnp.int8),
+  (torch.int16, jnp.int16),
+  (torch.int32, jnp.int32),
+  (torch.int64, jnp.int64),
+  (torch.uint8, jnp.uint8),
+  (torch.bool, jnp.bool_),
+  (torch.complex64, jnp.complex64),
+  (torch.complex128, jnp.complex128),
+  (torch.bfloat16, jnp.bfloat16),
+]
+
+
+def t2j_dtype(dtype):
+  return next(j_dtype for t_dtype, j_dtype in TJ_DTYPE_ASSOCIATION if t_dtype == dtype)
+
+
+def j2t_dtype(dtype):
+  return next(t_dtype for t_dtype, j_dtype in TJ_DTYPE_ASSOCIATION if j_dtype == dtype)
 
 
 def t2j_module(module):
@@ -703,6 +1110,8 @@ def t2j(thing):
     return t2j_array(thing)
   elif isinstance(thing, torch.nn.Module):
     return t2j_module(thing)
+  elif isinstance(thing, torch.dtype):
+    return t2j_dtype(thing)
   elif callable(thing):
     # This branch must live below the torch.nn.Module branch!
     return t2j_function(thing)
@@ -713,5 +1122,8 @@ def t2j(thing):
 def j2t(thing):
   if isinstance(thing, jnp.ndarray):
     return j2t_array(thing)
+  # We allow dtypes and "dtype constructors". It's subtle, but there's a difference. See https://github.com/jax-ml/jax/discussions/25497.
+  if isinstance(thing, jnp.dtype) or thing in [dt for _, dt in TJ_DTYPE_ASSOCIATION]:
+    return j2t_dtype(thing)
   else:
     raise NotImplementedError
