@@ -8,15 +8,16 @@ from torch2jax import j2t, t2j
 aac = np.testing.assert_allclose
 
 
-class RngPooper:
-  """A stateful wrapper around stateless random.PRNGKey's."""
-
-  def __init__(self, init_rng):
-    self.rng = init_rng
-
-  def poop(self) -> random.PRNGKey:
-    self.rng, rng_key = random.split(self.rng)
-    return rng_key
+def anac(*args, **kwargs):
+  """Assert not all close"""
+  fail = False
+  try:
+    np.testing.assert_allclose(*args, **kwargs)
+    fail = True
+  except AssertionError:
+    return
+  if fail:
+    raise AssertionError("Should not be close")
 
 
 def test_t2j_array():

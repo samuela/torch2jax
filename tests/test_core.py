@@ -14,6 +14,12 @@ def test_arange():
   t2j_function_test(lambda: torch.arange(2, 10, 3), [])
 
 
+def test_empty():
+  t2j_function_test(lambda: torch.empty(()), [])
+  t2j_function_test(lambda: torch.empty(2), [])
+  t2j_function_test(lambda: torch.empty((2, 3)), [])
+
+
 def test_ones():
   t2j_function_test(lambda: torch.ones(()), [])
   t2j_function_test(lambda: torch.ones(2), [])
@@ -31,6 +37,9 @@ def test_tensor():
   t2j_function_test(lambda: torch.tensor([]), [])
   t2j_function_test(lambda: torch.tensor([1, 2, 3]), [])
   t2j_function_test(lambda: torch.tensor([[1, 2, 3], [4, 5, 6]]), [])
+
+  # torch allows calling torch.tensor with a torch.Tensor. This gets a little tricky with Torchish.
+  t2j_function_test(lambda: torch.tensor(torch.arange(3)), [])
 
 
 def test_Tensor():
