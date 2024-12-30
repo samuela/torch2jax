@@ -145,44 +145,45 @@ def test_torch_nn_Conv2d():
 
 
 def test_torch_nn_BatchNorm1d():
-  # TODO: test (N, C, L) shape input
   rp = RngPooper(random.PRNGKey(123))
 
   for eps in [1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6]:
     for affine in [False, True]:
-      model = torch.nn.BatchNorm1d(5, eps=eps, affine=affine)
-      model.eval()
+      # BatchNorm1d accepts either (N, C) or (N, C, L) shape input
+      for input_shape in [(3, 5), (2, 3, 5)]:
+        model = torch.nn.BatchNorm1d(input_shape[1], eps=eps, affine=affine)
+        model.eval()
 
-      input_batch = random.normal(rp.poop(), (3, 5))  # (N, C, L) is also supported
-      params = {
-        "running_mean": random.normal(rp.poop(), (5,)),
-        "running_var": random.uniform(rp.poop(), (5,)),
-        "num_batches_tracked": random.randint(rp.poop(), (1,), 0, 100),
-      }
-      if affine:
-        params["weight"] = random.normal(rp.poop(), (5,))
-        params["bias"] = random.normal(rp.poop(), (5,))
+        input_batch = random.normal(rp.poop(), input_shape)  # (N, C, L) is also supported
+        params = {
+          "running_mean": random.normal(rp.poop(), (input_shape[1],)),
+          "running_var": random.uniform(rp.poop(), (input_shape[1],)),
+          "num_batches_tracked": random.randint(rp.poop(), (1,), 0, 100),
+        }
+        if affine:
+          params["weight"] = random.normal(rp.poop(), (input_shape[1],))
+          params["bias"] = random.normal(rp.poop(), (input_shape[1],))
 
-      model.load_state_dict({k: j2t(v) for k, v in params.items()})
-      res_torch = model(j2t(input_batch))
+        model.load_state_dict({k: j2t(v) for k, v in params.items()})
+        res_torch = model(j2t(input_batch))
 
-      jaxified_module = t2j(model)
-      res_jax = jaxified_module(input_batch, state_dict=params)
-      res_jax_jit = jit(jaxified_module)(input_batch, state_dict=params)
+        jaxified_module = t2j(model)
+        res_jax = jaxified_module(input_batch, state_dict=params)
+        res_jax_jit = jit(jaxified_module)(input_batch, state_dict=params)
 
-      # Test forward pass with and without jax.jit
-      aac(res_jax, res_torch.numpy(force=True), atol=1e-6)
-      aac(res_jax_jit, res_torch.numpy(force=True), atol=1e-6)
+        # Test forward pass with and without jax.jit
+        aac(res_jax, res_torch.numpy(force=True), atol=1e-6)
+        aac(res_jax_jit, res_torch.numpy(force=True), atol=1e-6)
 
-      # Test gradients
-      if affine:
-        jax_grad = grad(
-          lambda p: (jaxified_module(input_batch, state_dict={**p, "num_batches_tracked": 0}) ** 2).sum()
-        )({k: v for k, v in params.items() if k != "num_batches_tracked"})
+        # Test gradients
+        if affine:
+          jax_grad = grad(
+            lambda p: (jaxified_module(input_batch, state_dict={**p, "num_batches_tracked": 0}) ** 2).sum()
+          )({k: v for k, v in params.items() if k != "num_batches_tracked"})
 
-        res_torch.pow(2).sum().backward()
-        aac(jax_grad["weight"], model.weight.grad, atol=1e-5)
-        aac(jax_grad["bias"], model.bias.grad, atol=1e-6)
+          res_torch.pow(2).sum().backward()
+          aac(jax_grad["weight"], model.weight.grad, rtol=1e-6)
+          aac(jax_grad["bias"], model.bias.grad, rtol=1e-6)
 
 
 def test_torch_nn_MaxPool1d():
