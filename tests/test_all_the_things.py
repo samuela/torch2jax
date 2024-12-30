@@ -399,4 +399,3 @@ def test_torchvision_models_vit_b_16():
 
   # Models use different convolution backends and are too deep to compare gradients programmatically. But they line up
   # to reasonable expectations.
-  # to reasonable expectations.
