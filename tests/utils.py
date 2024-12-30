@@ -27,14 +27,18 @@ def test_t2j_array():
 
 def t2j_function_test(f, input_shapes, rng=random.PRNGKey(123), num_tests=5, **assert_kwargs):
   for test_rng in random.split(rng, num_tests):
-    inputs = [random.normal(rng, shape) for rng, shape in zip(random.split(test_rng, len(input_shapes)), input_shapes)]
-    torch_output = f(*map(j2t, inputs))
-    aac(t2j(f)(*inputs), torch_output, **assert_kwargs)
-    aac(jit(t2j(f))(*inputs), torch_output, **assert_kwargs)
+    # This is a thunk since methods like torch.nn.functional.batch_norm mutate the inputs and that affects subsequent
+    # tests. We construct fresh values each time as a mitigation.
+    inputs = lambda: [
+      random.normal(rng, shape) for rng, shape in zip(random.split(test_rng, len(input_shapes)), input_shapes)
+    ]
+    torch_output = f(*map(j2t, inputs()))
+    aac(t2j(f)(*inputs()), torch_output, **assert_kwargs)
+    aac(jit(t2j(f))(*inputs()), torch_output, **assert_kwargs)
 
     # TODO: consider doing this for all functions by doing eg f_ = lambda x: torch.sum(f(x) ** 2)
     # Can only calculate gradients on scalar-output functions
-    if torch_output.numel() == 1 and len(inputs) > 0:
+    if torch_output.numel() == 1 and len(inputs()) > 0:
       f_ = lambda x: f(x).flatten()[0]
 
       # Branching is necessary to avoid `TypeError: iteration over a 0-d array` in the zip.
@@ -42,12 +46,12 @@ def t2j_function_test(f, input_shapes, rng=random.PRNGKey(123), num_tests=5, **a
         map(
           lambda x, y: aac(x.squeeze(), y.squeeze(), **assert_kwargs),
           zip(
-            grad(t2j(f_))(*inputs),
-            torch.func.grad(f_, argnums=tuple(range(len(input_shapes))))(*map(j2t, inputs)),
+            grad(t2j(f_))(*inputs()),
+            torch.func.grad(f_, argnums=tuple(range(len(input_shapes))))(*map(j2t, inputs())),
           ),
         )
       else:
-        [input] = inputs
+        [input] = inputs()
         aac(
           grad(t2j(f_))(input).squeeze(),
           torch.func.grad(f_)(j2t(input)).squeeze(),
