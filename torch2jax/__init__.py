@@ -435,15 +435,36 @@ def adaptive_avg_pool2d(input, output_size):
 
 @implements(torch.nn.functional.batch_norm)
 def batch_norm(input, running_mean, running_var, weight=None, bias=None, training=False, momentum=0.1, eps=1e-5):
-  assert not training, "torch.nn.functional.batch_norm is only supported in eval()-mode"
-  newshape = (1, -1) + (1,) * (len(input.shape) - 2)
-  res = (coerce(input) - coerce(running_mean).reshape(newshape)) * jax.lax.rsqrt(
-    coerce(running_var).reshape(newshape) + coerce(eps)
-  )
+  assert isinstance(input, Torchish)
+  assert isinstance(running_mean, Torchish)
+  assert isinstance(running_var, Torchish)
+  assert weight is None or isinstance(weight, Torchish)
+  assert bias is None or isinstance(bias, Torchish)
+  assert isinstance(momentum, float)
+  assert isinstance(eps, float)
+
+  x = input.value
+
+  working_mean = running_mean.value
+  working_var = running_var.value
+  if training:
+    x_ = x.reshape((x.shape[0], x.shape[1], -1))
+
+    mean = jnp.mean(x_, axis=(0, 2))
+    var = jnp.var(x_, axis=(0, 2), ddof=1)
+    running_mean.value = momentum * mean + (1 - momentum) * running_mean.value
+    running_var.value = momentum * var + (1 - momentum) * running_var.value
+
+    # Why different ddof values are used for running_var and working_var I will never understand...
+    working_mean = mean
+    working_var = jnp.var(x_, axis=(0, 2), ddof=0)
+
+  newshape = (1, -1) + (1,) * (len(x.shape) - 2)
+  res = (x - working_mean.reshape(newshape)) * jax.lax.rsqrt(working_var.reshape(newshape) + eps)
   if weight is not None:
-    res *= coerce(weight).reshape(newshape)
+    res *= weight.value.reshape(newshape)
   if bias is not None:
-    res += coerce(bias).reshape(newshape)
+    res += bias.value.reshape(newshape)
   return res
 
 

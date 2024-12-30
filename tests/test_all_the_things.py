@@ -3,6 +3,7 @@
 # TODO: test torch.nn.functional.layer_norm
 
 import socket
+from functools import partial
 
 import jax.numpy as jnp
 import pytest
@@ -13,8 +14,27 @@ from torch2jax import RngPooper, j2t, t2j
 
 from .utils import aac, anac, t2j_function_test
 
-# def test_torch_nn_functional_batch_norm():
-#   raise
+
+def test_torch_nn_functional_batch_norm():
+  # torch.nn.functional.batch_norm takes as input.ndim() >= 2, and it expects 1D running_mean and running_var to have
+  # the shape (input.shape[1], )
+
+  f = partial(torch.nn.functional.batch_norm, training=False)
+  t2j_function_test(f, [(2, 3), (3,), (3,), (3,), (3,)], atol=1e-5)
+  t2j_function_test(f, [(2, 3, 5), (3,), (3,), (3,), (3,)], atol=1e-5)
+  t2j_function_test(f, [(2, 3, 5, 7), (3,), (3,), (3,), (3,)], atol=1e-5)
+
+  def f(input, running_mean, running_var, weight, bias):
+    # When training=True running_mean and running_var are mutated.
+
+    # Variance needs to be positive for sensible results so we square it.
+    running_var = running_var.pow(2)
+    out = torch.nn.functional.batch_norm(input, running_mean, running_var, weight=weight, bias=bias, training=True)
+    return torch.cat([out.flatten(), running_mean.flatten(), running_var.flatten()])
+
+  t2j_function_test(f, [(2, 3), (3,), (3,), (3,), (3,)], atol=1e-6)
+  t2j_function_test(f, [(2, 3, 5), (3,), (3,), (3,), (3,)], atol=1e-6)
+  t2j_function_test(f, [(2, 3, 5, 7), (3,), (3,), (3,), (3,)], atol=1e-6)
 
 
 def test_torch_nn_functional_scaled_dot_product_attention():
