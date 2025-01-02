@@ -1065,7 +1065,22 @@ def j2t_dtype(dtype):
 
 
 def t2j_module(module):
-  def f(x, rng=None, state_dict={}):
+  def f(*args, state_dict={}, rng=None, return_state_dict=False):
+    """Call the `torch.nn.Module` `module` with `*args`.
+
+    Arguments:
+    - `*args`: arguments to pass to the module.
+    - `state_dict`: a dictionary of parameters to use for the module.
+    - `rng`: a `jax.random.PRNGKey` to use for random number generation. Only
+      necessary if the module forward pass uses PyTorch random functions like
+      `torch.randn`.
+    - `return_state_dict`: if `True`, return the updated state dict alongside
+      the output, as in `y, after_sd = f(x, state_dict=before_sd)`. This is
+      useful for modules that involve buffer mutation such as batch norm in
+      training mode. Otherwise, return just the output, as in `y = f(x)`. Note
+      that if you are `jax.jit`ting this function, you'll need to add
+      `static_argnames=["return_state_dict"]` to the jit call.
+    """
     # We want to have a non-mutating API, so we need to copy the module before performing parameter surgery. Note that
     # doing this copy in `t2j_module` and outside of `f` is not sufficient: multiple calls to `f` should not step on
     # each others toes.
@@ -1088,7 +1103,11 @@ def t2j_module(module):
     # Replace parameters with Torchish objects
     visit(m, prefix=[])
 
-    return t2j_function(m)(x, rng=rng)
+    out = t2j_function(m)(*args, rng=rng)
+    if return_state_dict:
+      return out, {k: v.value for k, v in m.state_dict().items()}
+    else:
+      return out
 
   return f
 

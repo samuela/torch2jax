@@ -164,6 +164,12 @@ def test_torch_nn_Conv2d():
             aac(jax_grad["bias"], model.bias.grad, rtol=1e-3)
 
 
+def _assert_state_dicts_equal(actual, desired, **kwargs):
+  assert sorted(actual.keys()) == sorted(desired.keys())
+  for k in actual.keys():
+    aac(actual[k], desired[k], **kwargs)
+
+
 def test_torch_nn_BatchNorm1d():
   rp = RngPooper(random.PRNGKey(123))
 
@@ -171,39 +177,48 @@ def test_torch_nn_BatchNorm1d():
     for affine in [False, True]:
       # BatchNorm1d accepts either (N, C) or (N, C, L) shape input
       for input_shape in [(3, 5), (2, 3, 5)]:
-        model = torch.nn.BatchNorm1d(input_shape[1], eps=eps, affine=affine)
-        model.eval()
+        for training in [False, True]:
+          model = torch.nn.BatchNorm1d(input_shape[1], eps=eps, affine=affine)
+          if not training:
+            model.eval()
 
-        input_batch = random.normal(rp.poop(), input_shape)  # (N, C, L) is also supported
-        params = {
-          "running_mean": random.normal(rp.poop(), (input_shape[1],)),
-          "running_var": random.uniform(rp.poop(), (input_shape[1],)),
-          "num_batches_tracked": random.randint(rp.poop(), (1,), 0, 100),
-        }
-        if affine:
-          params["weight"] = random.normal(rp.poop(), (input_shape[1],))
-          params["bias"] = random.normal(rp.poop(), (input_shape[1],))
+          input_batch = random.normal(rp.poop(), input_shape)
+          params = {
+            "running_mean": random.normal(rp.poop(), (input_shape[1],)),
+            "running_var": random.uniform(rp.poop(), (input_shape[1],)),
+            "num_batches_tracked": random.randint(rp.poop(), (1,), 0, 100),
+          }
+          if affine:
+            params["weight"] = random.normal(rp.poop(), (input_shape[1],))
+            params["bias"] = random.normal(rp.poop(), (input_shape[1],))
 
-        model.load_state_dict({k: j2t(v) for k, v in params.items()})
-        res_torch = model(j2t(input_batch))
+          model.load_state_dict({k: j2t(v) for k, v in params.items()})
+          res_torch = model(j2t(input_batch))
+          sd_torch = model.state_dict()
+          jaxified_module = t2j(model)
 
-        jaxified_module = t2j(model)
-        res_jax = jaxified_module(input_batch, state_dict=params)
-        res_jax_jit = jit(jaxified_module)(input_batch, state_dict=params)
+          # if training:
+          res_jax, sd_jax = jaxified_module(input_batch, state_dict=params, return_state_dict=True)
+          _assert_state_dicts_equal(sd_jax, sd_torch, rtol=1e-6)
 
-        # Test forward pass with and without jax.jit
-        aac(res_jax, res_torch.numpy(force=True), atol=1e-6)
-        aac(res_jax_jit, res_torch.numpy(force=True), atol=1e-6)
+          res_jax_jit, sd_jax = jit(jaxified_module, static_argnames=["return_state_dict"])(
+            input_batch, state_dict=params, return_state_dict=True
+          )
+          _assert_state_dicts_equal(sd_jax, sd_torch, rtol=1e-6)
 
-        # Test gradients
-        if affine:
-          jax_grad = grad(
-            lambda p: (jaxified_module(input_batch, state_dict={**p, "num_batches_tracked": 0}) ** 2).sum()
-          )({k: v for k, v in params.items() if k != "num_batches_tracked"})
+          # Test forward pass with and without jax.jit
+          aac(res_jax, res_torch.numpy(force=True), atol=1e-6)
+          aac(res_jax_jit, res_torch.numpy(force=True), atol=1e-6)
 
-          res_torch.pow(2).sum().backward()
-          aac(jax_grad["weight"], model.weight.grad, rtol=1e-6)
-          aac(jax_grad["bias"], model.bias.grad, rtol=1e-6)
+          # Test gradients
+          if affine:
+            jax_grad = grad(
+              lambda p: (jaxified_module(input_batch, state_dict={**p, "num_batches_tracked": 0}) ** 2).sum()
+            )({k: v for k, v in params.items() if k != "num_batches_tracked"})
+
+            res_torch.pow(2).sum().backward()
+            aac(jax_grad["weight"], model.weight.grad, rtol=1e-5, atol=1e-5)
+            aac(jax_grad["bias"], model.bias.grad, rtol=1e-5, atol=1e-5)
 
 
 def test_torch_nn_MaxPool1d():
@@ -373,26 +388,36 @@ def is_network_reachable():
 def test_torchvision_models_resnet18():
   import torchvision
 
-  model = torchvision.models.resnet18(weights="DEFAULT").eval()
-
-  parameters = {k: t2j(v) for k, v in model.named_parameters()}
-  buffers = {k: t2j(v) for k, v in model.named_buffers()}
-
   rp = RngPooper(random.PRNGKey(123))
-
   input_batch = random.normal(rp.poop(), (5, 3, 224, 224))
-  res_torch = model(j2t(input_batch))
 
-  jaxified_module = t2j(model)
-  res_jax = jaxified_module(input_batch, state_dict={**parameters, **buffers})
-  res_jax_jit = jit(jaxified_module)(input_batch, state_dict={**parameters, **buffers})
+  for eval in [False, True]:
+    model = torchvision.models.resnet18(weights="DEFAULT")
+    if eval:
+      model.eval()
 
-  # Test forward pass with and without jax.jit
-  aac(res_jax, res_torch.numpy(force=True), atol=1e-5)
-  aac(res_jax_jit, res_torch.numpy(force=True), atol=1e-5)
+    # Copying is necessary since buffers are mutable in training mode
+    parameters = {k: t2j(v) for k, v in model.named_parameters()}
+    buffers = {k: t2j(v).copy() for k, v in model.named_buffers()}
 
-  # Models use different convolution backends and are too deep to compare gradients programmatically. But they line up
-  # to reasonable expectations.
+    res_torch = model(j2t(input_batch))
+    sd_torch = model.state_dict()
+
+    jaxified_module = t2j(model)
+    res_jax, sd_jax = jaxified_module(input_batch, state_dict={**parameters, **buffers}, return_state_dict=True)
+    res_jax_jit, sd_jax_jit = jit(jaxified_module, static_argnames=["return_state_dict"])(
+      input_batch, state_dict={**parameters, **buffers}, return_state_dict=True
+    )
+
+    # Test forward pass with and without jax.jit
+    aac(res_jax, res_torch.numpy(force=True), atol=1e-4)
+    aac(res_jax_jit, res_torch.numpy(force=True), atol=1e-4)
+
+    _assert_state_dicts_equal(sd_jax, sd_torch, atol=1e-6)
+    _assert_state_dicts_equal(sd_jax_jit, sd_torch, atol=1e-6)
+
+    # Models use different convolution backends and are too deep to compare gradients programmatically. But they line up
+    # to reasonable expectations.
 
 
 @pytest.mark.skip(reason="https://github.com/jax-ml/jax/issues/25066")
