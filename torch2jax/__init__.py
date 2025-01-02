@@ -400,12 +400,6 @@ def tensor(data, dtype=None, device=None, requires_grad=False, pin_memory=False)
 def zeros(*args, out=None, dtype=None, layout=torch.strided, device=None, requires_grad=False):
   assert out is None, "TODO: implement out"
   assert not requires_grad
-
-  # dt = t2j_dtype(dtype or torch.get_default_dtype())
-  # if len(args) == 1:
-  #   return jnp.zeros(args[0], dtype=dt)
-  # else:
-  #   return jnp.zeros(args, dtype=dt)
   return jnp.zeros(_args_to_shape(args), dtype=t2j_dtype(dtype or torch.get_default_dtype()))
 
 
