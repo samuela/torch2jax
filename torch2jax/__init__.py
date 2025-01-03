@@ -1,4 +1,3 @@
-# TODO: do we still need coerce? if so, why?
 import copy
 import functools
 import math
@@ -80,17 +79,9 @@ HANDLED_FUNCTIONS = {}
 # must either subclass or impl __torch_function__
 class Torchish:
   def __init__(self, value):
-    if isinstance(value, Torchish):
-      # We use Torchish.__init__ as a coercion function to take arbitrary values -- scalars, Torchish objects, and
-      # anything else that torch accepts as a function argument... TODO
-      self.value = value.value
-    elif isinstance(value, jnp.ndarray) or isinstance(value, int) or isinstance(value, float):
-      # See https://github.com/google/jax/issues/2115 re `isinstance(value, jnp.ndarray)`.
-      self.value = value
-    else:
-      raise NotImplementedError(
-        f"Attempted to instantiate Torchish with {value}. Don't know what to do with that. Torchish supports int, float, jax.numpy.ndarray, and torch.Tensor values."
-      )
+    # See https://github.com/google/jax/issues/2115 re `isinstance(value, jnp.ndarray)`.
+    assert isinstance(value, jnp.ndarray) or isinstance(value, int) or isinstance(value, float)
+    self.value = value
 
   # TODO: get rid of this and move everything to the Mode's __torch_function__
   @classmethod
@@ -130,14 +121,14 @@ class Torchish:
     return Torchish(jnp.broadcast_to(self.value, newshape))
 
   # fmt: off
-  def __add__(self, other): return Torchish(self.value + coerce(other))
+  def __add__(self, other): return Torchish(self.value + _coerce(other))
   def __getitem__(self, key): return Torchish(self.value.__getitem__(key))
-  def __matmul__(self, other): return Torchish(self.value @ coerce(other))
-  def __mul__(self, other): return Torchish(self.value * coerce(other))
-  def __pow__(self, other): return Torchish(self.value ** coerce(other))
-  def __radd__(self, other): return Torchish(coerce(other) + self.value)
-  def __rmatmul__(self, other): return Torchish(coerce(other) @ self.value)
-  def __rmul__(self, other): return Torchish(coerce(other) * self.value)
+  def __matmul__(self, other): return Torchish(self.value @ _coerce(other))
+  def __mul__(self, other): return Torchish(self.value * _coerce(other))
+  def __pow__(self, other): return Torchish(self.value ** _coerce(other))
+  def __radd__(self, other): return Torchish(_coerce(other) + self.value)
+  def __rmatmul__(self, other): return Torchish(_coerce(other) @ self.value)
+  def __rmul__(self, other): return Torchish(_coerce(other) * self.value)
 
   # For some reason `foo = torch.foo` doesn't work on these
   def detach(self): return Torchish(jax.lax.stop_gradient(self.value))
@@ -179,7 +170,25 @@ class Torchish:
     return self
 
 
-coerce = lambda x: Torchish(x).value
+def _coerce(x):
+  """Coerce an input into something JAX-compatible.
+
+  There are functions like `torch.pow` which accept Python ints, Python floats,
+  or `torch.Tensor`s, so some fuss is necessary to get everything
+  JAX-compatible."""
+  if isinstance(x, Torchish):
+    return x.value
+  elif isinstance(x, int) or isinstance(x, float):
+    return x
+  else:
+    raise NotImplementedError(
+      f"Attempted to _coerce with {x}, type {type(x)}. Don't know what to do with that. _coerce supports int, float, and Torchish values."
+    )
+
+
+def _v(x):
+  assert isinstance(x, Torchish)
+  return x.value
 
 
 def _args_to_shape(args):
@@ -202,9 +211,9 @@ def implements(torch_function, Torchishify_output=True):
 def auto_implements(torch_function, jax_function, dont_coerce_argnums=()):
   @implements(torch_function)
   def fn(*args, **kwargs):
-    # NOTE: we don't coerce values in kwargs! So far this has not been problematic.
+    # NOTE: we don't _coerce values in kwargs! So far this has not been problematic.
     return jax_function(
-      *(arg if i in dont_coerce_argnums else coerce(arg) for i, arg in enumerate(args)),
+      *(arg if i in dont_coerce_argnums else _coerce(arg) for i, arg in enumerate(args)),
       **kwargs,
     )
 
@@ -253,12 +262,12 @@ def arange(*args, **kwargs):
 def bernoulli(input, generator=None, out=None):
   assert generator is None, "TODO: implement `generator`"
   assert out is None, "TODO: implement `out`"
-  return jax.random.bernoulli(mk_rng(), p=coerce(input))
+  return jax.random.bernoulli(mk_rng(), p=_v(input))
 
 
 @implements(torch.cat)
 def cat(tensors, dim=0):
-  return jnp.concatenate([coerce(x) for x in tensors], axis=dim)
+  return jnp.concatenate([_v(x) for x in tensors], axis=dim)
 
 
 @implements(torch.empty)
@@ -279,7 +288,7 @@ def empty(
 @implements(torch.flatten)
 def flatten(input, start_dim=0, end_dim=-1):
   assert end_dim == -1, "TODO: implement end_dim"
-  return jnp.reshape(coerce(input), input.shape[:start_dim] + (-1,))
+  return jnp.reshape(_v(input), input.shape[:start_dim] + (-1,))
 
 
 @implements(torch.multinomial)
@@ -303,13 +312,13 @@ def normal(*args, **kwargs):
   assert kwargs.get("out", None) is None, "TODO: implement `out`"
   assert len(args) <= 3, f"too many arguments to normal: {args}"
 
-  mean = kwargs.get("mean", args[0] if len(args) > 0 else 0.0)
-  std = kwargs.get("std", args[1] if len(args) > 1 else 1.0)
+  mean = _coerce(kwargs.get("mean", args[0] if len(args) > 0 else 0.0))
+  std = _coerce(kwargs.get("std", args[1] if len(args) > 1 else 1.0))
   shape = kwargs.get(
     "size",
     args[2]
     if len(args) == 3
-    else (mean.shape if isinstance(mean, Torchish) else (std.shape if isinstance(std, Torchish) else None)),
+    else (mean.shape if isinstance(mean, jnp.ndarray) else (std.shape if isinstance(std, jnp.ndarray) else None)),
   )
 
   return (
@@ -339,13 +348,13 @@ def ones_like(
   memory_format=torch.preserve_format,
 ):
   assert not requires_grad
-  return jnp.ones_like(input, dtype=t2j_dtype(dtype or input.dtype))
+  return jnp.ones_like(_v(input), dtype=t2j_dtype(dtype or input.dtype))
 
 
 @implements(torch.poisson)
 def poisson(input, generator=None):
   assert generator is None, "TODO: implement `generator`"
-  return jax.random.poisson(mk_rng(), lam=coerce(input))
+  return jax.random.poisson(mk_rng(), lam=_v(input))
 
 
 @implements(torch.rand)
@@ -424,7 +433,7 @@ def zeros_like(
 def adaptive_avg_pool2d(input, output_size):
   assert output_size == 1 or output_size == (1, 1), "TODO: implement output_size != 1"
   assert input.ndim == 4, "TODO: implement non-batched input"
-  return jnp.mean(coerce(input), axis=(2, 3), keepdims=True)
+  return jnp.mean(_v(input), axis=(2, 3), keepdims=True)
 
 
 @implements(torch.nn.functional.batch_norm)
@@ -482,14 +491,14 @@ def conv2d(
     padding = [(p1, p1), (p2, p2)]
 
   res = jax.lax.conv_general_dilated(
-    lhs=coerce(input),
-    rhs=coerce(weight),
+    lhs=_v(input),
+    rhs=_v(weight),
     window_strides=stride,
     padding=padding,
     rhs_dilation=dilation,
   )
   if bias is not None:
-    res += coerce(bias)[jnp.newaxis, :, jnp.newaxis, jnp.newaxis]
+    res += _v(bias)[jnp.newaxis, :, jnp.newaxis, jnp.newaxis]
   return res
 
 
@@ -501,8 +510,8 @@ def conv_transpose2d(input, weight, bias=None, stride=1, padding=0, output_paddi
 
   ph, pw = (padding, padding) if isinstance(padding, int) else padding
   res = gradient_based_conv_transpose(
-    lhs=coerce(input),
-    rhs=coerce(weight),
+    lhs=_v(input),
+    rhs=_v(weight),
     strides=stride,
     padding=[(ph, ph), (pw, pw)],
     output_padding=output_padding,
@@ -510,7 +519,7 @@ def conv_transpose2d(input, weight, bias=None, stride=1, padding=0, output_paddi
     dimension_numbers=("NCHW", "OIHW", "NCHW"),
   )
   if bias is not None:
-    res += coerce(bias)[jnp.newaxis, :, jnp.newaxis, jnp.newaxis]
+    res += _v(bias)[jnp.newaxis, :, jnp.newaxis, jnp.newaxis]
   return res
 
 
@@ -747,7 +756,7 @@ def dropout(input, p=0.5, training=True, inplace=False):
 
 @implements(torch.nn.functional.layer_norm)
 def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-05):
-  input = coerce(input)
+  input = _v(input)
 
   d = len(normalized_shape)
   mean = jnp.mean(input, axis=tuple(range(input.ndim)[-d:]), keepdims=True)
@@ -757,18 +766,18 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-05):
 
   res = (input - mean) / jnp.sqrt(var + eps)
   if weight is not None:
-    res *= coerce(weight)
+    res *= _v(weight)
   if bias is not None:
-    res += coerce(bias)
+    res += _v(bias)
   return res
 
 
 @implements(torch.nn.functional.linear)
 def linear(input, weight, bias=None):
   if bias is None:
-    return coerce(input) @ coerce(weight).T
+    return _v(input) @ _v(weight).T
   else:
-    return coerce(input) @ coerce(weight).T + coerce(bias)
+    return _v(input) @ _v(weight).T + _v(bias)
 
 
 @implements(torch.nn.functional.max_pool1d)
@@ -778,7 +787,7 @@ def max_pool1d(input, kernel_size, stride=None, padding=0, dilation=1, ceil_mode
   assert not return_indices, "TODO: implement return_indices"
 
   return jax.lax.reduce_window(
-    coerce(input),
+    _v(input),
     -jnp.inf,
     jax.lax.max,
     window_dimensions=(1, 1, kernel_size) if isinstance(kernel_size, int) else (1, 1) + kernel_size,
@@ -797,7 +806,7 @@ def max_pool2d(input, kernel_size, stride=None, padding=0, dilation=1, ceil_mode
   # Coerce `padding: Int` -> `padding: Tuple[Int, Int]` if necessary.
   (pad_h, pad_w) = (padding, padding) if isinstance(padding, int) else padding
   return jax.lax.reduce_window(
-    coerce(input),
+    _v(input),
     -jnp.inf,
     jax.lax.max,
     # Note that these settings all rely on input.ndim == 4:
@@ -807,7 +816,7 @@ def max_pool2d(input, kernel_size, stride=None, padding=0, dilation=1, ceil_mode
   )
 
 
-@implements(torch.nn.functional.relu)
+@implements(torch.nn.functional.relu, Torchishify_output=False)
 def relu(x, inplace=False):
   # Can't use `auto_implements` since jax.nn.relu does not have an `inplace` option.
   if inplace:
@@ -815,7 +824,7 @@ def relu(x, inplace=False):
     x.value = jax.nn.relu(x.value)
     return x
   else:
-    return jax.nn.relu(coerce(x))
+    return Torchish(jax.nn.relu(_v(x)))
 
 
 @implements(torch.nn.functional.scaled_dot_product_attention)
@@ -827,7 +836,7 @@ def scaled_dot_product_attention(query, key, value, attn_mask=None, dropout_p=0.
   # query is (N, ..., L, E)
   # key, value are (N, ..., S, E)
 
-  Q, K, V = coerce(query), coerce(key), coerce(value)
+  Q, K, V = _v(query), _v(key), _v(value)
   # L = Q.shape[-2]
   # S = K.shape[-2]
 
@@ -842,7 +851,7 @@ def scaled_dot_product_attention(query, key, value, attn_mask=None, dropout_p=0.
 
 
 # NOTE: the "torch.Tensor" type annotations here are a lie, or at least an approximation: In reality, they can be
-# anything coerce-able.
+# anything _coerce-able.
 @implements(torch.nn.functional.multi_head_attention_forward, Torchishify_output=False)
 def multi_head_attention_forward(
   query: torch.Tensor,
@@ -892,13 +901,13 @@ def multi_head_attention_forward(
   assert average_attn_weights, "TODO: implement average_attn_weights=False"
   assert not is_causal, "TODO: implement is_causal=True"
 
-  Q, K, V = coerce(query), coerce(key), coerce(value)
+  Q, K, V = _v(query), _v(key), _v(value)
   assert Q.ndim == 3 and K.ndim == 3 and V.ndim == 3, "TODO: implement non-batched version"
   # For some asinine reason, the PyTorch calling signature is query (L, N, E), key (S, N, E), and value (S, N, E).
   Q, K, V = jnp.swapaxes(Q, 0, 1), jnp.swapaxes(K, 0, 1), jnp.swapaxes(V, 0, 1)
 
-  in_proj_weight, in_proj_bias = coerce(in_proj_weight), coerce(in_proj_bias)
-  out_proj_weight, out_proj_bias = coerce(out_proj_weight), coerce(out_proj_bias)
+  in_proj_weight, in_proj_bias = _v(in_proj_weight), _v(in_proj_bias)
+  out_proj_weight, out_proj_bias = _v(out_proj_weight), _v(out_proj_bias)
 
   w_q, w_k, w_v = jnp.split(in_proj_weight, 3)
   b_q, b_k, b_v = jnp.split(in_proj_bias, 3)
@@ -908,7 +917,7 @@ def multi_head_attention_forward(
   # print(Q1.shape, K1.shape, V1.shape)  # (N, L, E) (N, S, E) (N, S, E)
   sdpa = jnp.concatenate(
     tuple(
-      scaled_dot_product_attention(q, k, v).value
+      _v(scaled_dot_product_attention(Torchish(q), Torchish(k), Torchish(v)))
       for q, k, v in zip(
         jnp.split(Q1, num_heads, axis=-1),
         jnp.split(K1, num_heads, axis=-1),
