@@ -81,6 +81,10 @@ def test_inplace():
 def test_oneliners():
   t2j_function_test(lambda x: torch.pow(x, 2), [()])
   t2j_function_test(lambda x: torch.pow(x, 2), [(3,)])
+  t2j_function_test(lambda x, y: torch.pow(x, y), [(), ()])
+  t2j_function_test(lambda x, y: torch.pow(x, y), [(), (3,)])
+  t2j_function_test(lambda x, y: torch.pow(x, y), [(3,), ()])
+  t2j_function_test(lambda x, y: torch.pow(x, y), [(3,), (3,)])
   t2j_function_test(lambda x: x.pow(3), [()])
   t2j_function_test(lambda x: x.pow(3), [(3,)])
   t2j_function_test(lambda x: x.pow(3).sum(), [(3,)], atol=1e-6)
