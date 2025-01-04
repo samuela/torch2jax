@@ -75,7 +75,7 @@ def test_zeros_like():
   t2j_function_test(lambda x: torch.zeros_like(x), [(2, 3)])
 
 
-def test_inplace():
+def test_inplace_Tensor_methods():
   def f(x):
     x = x + torch.tensor([3])
     x.add_(1)
