@@ -43,15 +43,18 @@ def RngPooperContext(value: RngPooper | None):
 
 
 def t2j_array(torch_array):
+  # NOTE: We are resorting to the copying, non-dlpack implementation until https://github.com/jax-ml/jax/issues/25066 is
+  # resolved. Unfortunate but necessary.
+
   # Using dlpack here causes segfaults on eg `t2j(lambda x: torch.Tensor([3.0]) * x)(jnp.array([0.0]))` when we use
   # `torch.func.functionalize` in `t2j_function`. For now, we're avoiding `torch.func.functionalize`, but something to
   # be wary of in the future.
 
   # RuntimeError: Can't export tensors that require gradient, use tensor.detach()
-  torch_array = torch_array.detach()
+  # torch_array = torch_array.detach()
 
   # See https://github.com/google/jax/issues/8082.
-  torch_array = torch_array.contiguous()
+  # torch_array = torch_array.contiguous()
 
   # At some point between 0.4.28 and 0.4.33 from_dlpack introduced a new
   # deprecation notice:
@@ -59,11 +62,11 @@ def t2j_array(torch_array):
   #   DeprecationWarning: Calling from_dlpack with a DLPack tensor is deprecated. The argument to from_dlpack should be an array from another framework that implements the __dlpack__ protocol.
   #
   # Very well, PyTorch arrays implement the __dlpack__ protocol, so no need to convert them to dlpack first.
-  return jax.dlpack.from_dlpack(torch_array)
+  # return jax.dlpack.from_dlpack(torch_array)
 
   # Alternative, but copying implementation:
   # Note FunctionalTensor.numpy() returns incorrect results, preventing us from using torch.func.functionalize.
-  # return jnp.array(torch_array.numpy(force=True))
+  return jnp.array(torch_array.numpy(force=True))
 
 
 def j2t_array(jax_array):
