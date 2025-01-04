@@ -222,6 +222,7 @@ def auto_implements(torch_function, jax_function, dont_coerce_argnums=()):
     )
 
 
+auto_implements(torch.abs, jnp.abs)
 auto_implements(torch.add, jnp.add)
 auto_implements(torch.exp, jnp.exp)
 auto_implements(torch.nn.functional.gelu, jax.nn.gelu)
