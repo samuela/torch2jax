@@ -746,16 +746,15 @@ def _flip_axes(x, axes):
 def dropout(input, p=0.5, training=True, inplace=False):
   # p is the probability of an element to be zeroed
   assert 0 <= p <= 1, "dropout probability has to be between 0 and 1, but got {}".format(p)
-  assert isinstance(input, Torchish)
   assert not inplace, "TODO: implement inplace=True"
   if training:
     # See https://pytorch.org/docs/stable/generated/torch.nn.Dropout.html
-    mask = jax.random.bernoulli(mk_rng(), p=1 - p, shape=input.value.shape)
-    res = jnp.where(mask, input.value, 0)
+    mask = jax.random.bernoulli(mk_rng(), p=1 - p, shape=_v(input).shape)
+    res = jnp.where(mask, _v(input), 0)
     # Note that we have to avoid a divide by zero here when p is 1.
     return res / (1 - p) if p < 1 else res
   else:
-    return input.value
+    return _v(input)
 
 
 @implements(torch.nn.functional.layer_norm)
