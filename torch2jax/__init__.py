@@ -124,12 +124,20 @@ class Torchish:
   # fmt: off
   def __add__(self, other): return Torchish(self.value + _coerce(other))
   def __getitem__(self, key): return Torchish(self.value.__getitem__(key))
+  def __lt__(self, other): return Torchish(self.value < _coerce(other))
+  def __le__(self, other): return Torchish(self.value <= _coerce(other))
+  def __eq__(self, other): return Torchish(self.value == _coerce(other))
+  def __ne__(self, other): return Torchish(self.value != _coerce(other))
+  def __gt__(self, other): return Torchish(self.value > _coerce(other))
+  def __ge__(self, other): return Torchish(self.value >= _coerce(other))
   def __matmul__(self, other): return Torchish(self.value @ _coerce(other))
   def __mul__(self, other): return Torchish(self.value * _coerce(other))
   def __pow__(self, other): return Torchish(self.value ** _coerce(other))
   def __radd__(self, other): return Torchish(_coerce(other) + self.value)
   def __rmatmul__(self, other): return Torchish(_coerce(other) @ self.value)
   def __rmul__(self, other): return Torchish(_coerce(other) * self.value)
+  def __rsub__(self, other): return Torchish(_coerce(other) - self.value)
+  def __sub__(self, other): return Torchish(self.value - _coerce(other))
 
   # For some reason `foo = torch.foo` doesn't work on these
   def clone(self): return Torchish(self.value.copy())
