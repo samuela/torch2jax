@@ -79,7 +79,9 @@ HANDLED_FUNCTIONS = {}
 class Torchish:
   def __init__(self, value):
     # See https://github.com/google/jax/issues/2115 re `isinstance(value, jnp.ndarray)`.
-    assert isinstance(value, jnp.ndarray) or isinstance(value, int) or isinstance(value, float)
+    assert (
+      isinstance(value, jnp.ndarray) or isinstance(value, int) or isinstance(value, float)
+    ), f"Tried to create Torchish with unsupported type: {type(value)}"
     self.value = value
 
   # In order for PyTorch to accept an object as one of its own and allow dynamic dispatch it must either subclass
