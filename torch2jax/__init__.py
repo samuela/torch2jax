@@ -246,6 +246,12 @@ auto_implements(torch.tanh, jnp.tanh)
 auto_implements(torch.transpose, jnp.swapaxes)
 
 
+@implements(torch._assert, Torchishify_output=False)
+def _assert(condition, message):
+  if not condition:
+    raise AssertionError(message)
+
+
 @implements(torch.arange)
 def arange(*args, **kwargs):
   assert kwargs.get("out", None) is None, "TODO: implement `out`"
