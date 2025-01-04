@@ -131,6 +131,7 @@ class Torchish:
   def __rmul__(self, other): return Torchish(_coerce(other) * self.value)
 
   # For some reason `foo = torch.foo` doesn't work on these
+  def clone(self): return Torchish(self.value.copy())
   def detach(self): return Torchish(jax.lax.stop_gradient(self.value))
   def dim(self): return self.ndim
   def flatten(*args, **kwargs): return torch.flatten(*args, **kwargs)

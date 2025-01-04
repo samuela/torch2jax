@@ -50,6 +50,18 @@ def test_Tensor():
   aac(torch.Tensor([1, 2, 3]), [1, 2, 3])
 
 
+def test_Tensor_clone():
+  t2j_function_test(lambda x: x.clone(), [()])
+  t2j_function_test(lambda x: x.clone(), [(2,)])
+  t2j_function_test(lambda x: x.clone().add_(1), [(2,)])
+
+  def f(x):
+    x.clone().add_(1)
+    return x
+
+  t2j_function_test(f, [(2,)])
+
+
 def test_zeros():
   t2j_function_test(lambda: torch.zeros(()), [])
   t2j_function_test(lambda: torch.zeros(2), [])
