@@ -395,6 +395,33 @@ def rand(
   )
 
 
+@implements(torch.rand_like)
+def rand_like(input, dtype=None, layout=None, device=None, requires_grad=False, memory_format=torch.preserve_format):
+  return jax.random.uniform(mk_rng(), shape=input.shape, dtype=t2j_dtype(dtype or input.dtype))
+
+
+@implements(torch.randint)
+def randint(*args, **kwargs):
+  assert kwargs.get("generator", None) is None, "TODO: implement `generator`"
+  assert kwargs.get("out", None) is None, "TODO: implement `out`"
+  low = kwargs.get("low", args[0] if len(args) == 3 else 0)
+  high = kwargs.get("high", args[1] if len(args) == 3 else args[0])
+  shape = kwargs.get("size", args[-1])
+  return jax.random.randint(
+    mk_rng(), shape=shape, minval=low, maxval=high, dtype=t2j_dtype(kwargs.get("dtype", torch.int64))
+  )
+
+
+@implements(torch.randint_like)
+def randint_like(*args, **kwargs):
+  input = kwargs.get("input", args[0])
+  low = kwargs.get("low", args[1] if len(args) == 3 else 0)
+  high = kwargs.get("high", args[2] if len(args) == 3 else args[1])
+  return jax.random.randint(
+    mk_rng(), shape=input.shape, minval=low, maxval=high, dtype=t2j_dtype(kwargs.get("dtype", input.dtype))
+  )
+
+
 @implements(torch.randn)
 def randn(
   *args,
