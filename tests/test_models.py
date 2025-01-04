@@ -83,7 +83,6 @@ def test_torchvision_models_resnet18():
     # to reasonable expectations.
 
 
-@pytest.mark.skip(reason="https://github.com/jax-ml/jax/issues/25066")
 @pytest.mark.skipif(not is_network_reachable(), reason="Network is not reachable")
 def test_torchvision_models_vit_b_16():
   import torchvision
@@ -92,8 +91,7 @@ def test_torchvision_models_vit_b_16():
   model.eval()
 
   parameters = {k: t2j(v) for k, v in model.named_parameters()}
-  # buffers = {k: t2j(v) for k, v in model.named_buffers()}
-  # assert len(buffers.keys()) == 0
+  assert len(dict(model.named_buffers()).keys()) == 0
 
   input_batch = random.normal(random.PRNGKey(123), (1, 3, 224, 224))
   res_torch = model(j2t(input_batch))
