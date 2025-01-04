@@ -306,18 +306,22 @@ def flatten(input, start_dim=0, end_dim=-1):
 
 
 @implements(torch.multinomial)
-def multinomial(*args, **kwargs):
-  assert kwargs.get("generator", None) is None, "TODO: implement `generator`"
-  assert kwargs.get("out", None) is None, "TODO: implement `out`"
-  # assert kwargs.get("replacement", False) is False, "`replacement == False` is not yet supported"
-  # return jax.random.categorical(
-  #   self._split_rng(),
-  #   logits=args[0].logits if isinstance(args[0], distributions.Categorical) else args[0],
-  #   shape=(args[1],),
-  # )
+def multinomial(input, num_samples, replacement=False, generator=None, out=None):
+  assert generator is None, "TODO: implement `generator`"
+  assert out is None, "TODO: implement `out`"
 
-  # TODO: implement this with jax.random.choice and vmap
-  raise
+  if input.ndim == 1:
+    N = input.shape[0]
+    return jax.random.choice(mk_rng(), N, shape=(num_samples,), replace=replacement, p=_v(input) / _v(input).sum())
+  elif input.ndim == 2:
+    m, N = input.shape
+    rngs = jax.random.split(mk_rng(), m)
+    return jax.vmap(
+      lambda rng, w: jax.random.choice(rng, N, shape=(num_samples,), replace=replacement, p=w / w.sum()),
+      in_axes=(0, 0),
+    )(rngs, _v(input))
+  else:
+    raise ValueError(f"unsupported shape: {input.shape}")
 
 
 @implements(torch.normal)
