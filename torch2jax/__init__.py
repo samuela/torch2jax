@@ -146,6 +146,7 @@ class Torchish:
   def flatten(*args, **kwargs): return torch.flatten(*args, **kwargs)
   def item(self): return self.value.item()
   def mean(*args, **kwargs): return torch.mean(*args, **kwargs)
+  def numel(self): return self.value.size
   def permute(self, *shape): return torch.permute(self, shape)
   def pow(*args, **kwargs): return torch.pow(*args, **kwargs)
   def size(self): return self.shape
