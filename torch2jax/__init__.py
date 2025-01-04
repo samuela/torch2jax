@@ -76,14 +76,15 @@ def j2t_array(jax_array):
 HANDLED_FUNCTIONS = {}
 
 
-# must either subclass or impl __torch_function__
 class Torchish:
   def __init__(self, value):
     # See https://github.com/google/jax/issues/2115 re `isinstance(value, jnp.ndarray)`.
     assert isinstance(value, jnp.ndarray) or isinstance(value, int) or isinstance(value, float)
     self.value = value
 
-  # TODO: get rid of this and move everything to the Mode's __torch_function__
+  # In order for PyTorch to accept an object as one of its own and allow dynamic dispatch it must either subclass
+  # `torch.Tensor` or have a `__torch_function__` method. We opt to take the method route. Dispatch logic is handled in
+  # `TorchishMode`.
   @classmethod
   def __torch_function__(cls, func, types, args=(), kwargs=None):
     raise NotImplementedError(f"Torchish.__torch_function__: {func}")
