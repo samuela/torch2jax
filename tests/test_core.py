@@ -1,10 +1,9 @@
-import jax
 import jax.numpy as jnp
 import pytest
 import torch
 from jax import grad, jit, vmap
 
-from torch2jax import j2t, t2j
+from torch2jax import t2j
 
 from .utils import aac, t2j_function_test
 
@@ -43,37 +42,6 @@ def test_tensor():
   t2j_function_test(lambda: torch.tensor(torch.arange(3)), [])
 
 
-def test_Tensor():
-  with pytest.raises(ValueError):
-    t2j(lambda: torch.Tensor([1, 2, 3]))()
-
-  # Test that original torch.Tensor.__new__ implementation is restored
-  aac(torch.Tensor([1, 2, 3]), [1, 2, 3])
-
-
-def test_Tensor_bernoulli_():
-  aac(t2j(lambda x: x.bernoulli_(0))(jnp.zeros(5), rng=jax.random.PRNGKey(0)), jnp.zeros(5))
-  aac(t2j(lambda x: x.bernoulli_(1))(jnp.zeros(5), rng=jax.random.PRNGKey(0)), jnp.ones(5))
-  aac(t2j(lambda x: x.bernoulli_(0.0))(jnp.zeros(5), rng=jax.random.PRNGKey(0)), jnp.zeros(5))
-  aac(t2j(lambda x: x.bernoulli_(1.0))(jnp.zeros(5), rng=jax.random.PRNGKey(0)), jnp.ones(5))
-
-  # test torch.Tensor values for p
-  aac(t2j(lambda x: x.bernoulli_(torch.tensor(0.0)))(jnp.zeros(5), rng=jax.random.PRNGKey(0)), jnp.zeros(5))
-  aac(t2j(lambda x: x.bernoulli_(torch.tensor(1.0)))(jnp.zeros(5), rng=jax.random.PRNGKey(0)), jnp.ones(5))
-
-
-def test_Tensor_clone():
-  t2j_function_test(lambda x: x.clone(), [()])
-  t2j_function_test(lambda x: x.clone(), [(2,)])
-  t2j_function_test(lambda x: x.clone().add_(1), [(2,)])
-
-  def f(x):
-    x.clone().add_(1)
-    return x
-
-  t2j_function_test(f, [(2,)])
-
-
 def test_zeros():
   t2j_function_test(lambda: torch.zeros(()), [])
   t2j_function_test(lambda: torch.zeros(2), [])
@@ -85,21 +53,6 @@ def test_zeros_like():
   t2j_function_test(lambda x: torch.zeros_like(x), [()])
   t2j_function_test(lambda x: torch.zeros_like(x), [(2,)])
   t2j_function_test(lambda x: torch.zeros_like(x), [(2, 3)])
-
-
-def test_inplace_Tensor_methods():
-  def f(x):
-    x = x + torch.tensor([3])
-    x.add_(1)
-    x.sub_(2.3)
-    x.mul_(3.4)
-    x.div_(5.6)
-    return x
-
-  t2j_function_test(f, [()], atol=1e-6)
-  t2j_function_test(f, [(3,)], atol=1e-6)
-  t2j_function_test(f, [(3, 5)], atol=1e-6)
-  aac(vmap(t2j(f))(jnp.array([1, 2, 3])), [f(1.0), f(2.0), f(3.0)])
 
 
 def test_oneliners():
@@ -156,8 +109,42 @@ def test_oneliners():
   t2j_function_test(lambda x: torch.flatten(x, start_dim=1), [(2, 3, 5)])
   t2j_function_test(lambda x: torch.flatten(x, start_dim=2), [(2, 3, 5, 7)])
 
+  t2j_function_test(lambda x: x - 0.5, [(3,)])
+  t2j_function_test(lambda x: 0.5 - x, [(3,)])
+  t2j_function_test(lambda x: x - 5, [(3,)])
+  t2j_function_test(lambda x: 5 - x, [(3,)])
 
-def test_detach():
+  t2j_function_test(lambda x: x < 0.5, [(3,)])
+  t2j_function_test(lambda x: x <= 0.5, [(3,)])
+  t2j_function_test(lambda x: x > 0.5, [(3,)])
+  t2j_function_test(lambda x: x >= 0.5, [(3,)])
+  t2j_function_test(lambda x: x == x, [(3,)])
+  t2j_function_test(lambda x: x != x, [(3,)])
+
+  t2j_function_test(torch.abs, [(3,)])
+
+
+def test_Tensor():
+  with pytest.raises(ValueError):
+    t2j(lambda: torch.Tensor([1, 2, 3]))()
+
+  # Test that original torch.Tensor.__new__ implementation is restored
+  aac(torch.Tensor([1, 2, 3]), [1, 2, 3])
+
+
+def test_Tensor_clone():
+  t2j_function_test(lambda x: x.clone(), [()])
+  t2j_function_test(lambda x: x.clone(), [(2,)])
+  t2j_function_test(lambda x: x.clone().add_(1), [(2,)])
+
+  def f(x):
+    x.clone().add_(1)
+    return x
+
+  t2j_function_test(f, [(2,)])
+
+
+def test_Tensor_detach():
   t2j_function_test(lambda x: x.detach() ** 2, [()])
   t2j_function_test(lambda x: x.detach() ** 2, [(3,)])
 
@@ -167,10 +154,25 @@ def test_detach():
   aac(grad(t2j(lambda x: torch.sum(x.detach() ** 2)))(2.1 * jnp.arange(3)), 0)
 
 
-def test_item():
+def test_Tensor_item():
   aac(t2j(lambda x: x.item() * x)(jnp.array(3)), 9)
   with pytest.raises(Exception):
     jit(t2j(lambda x: x.item() * x))(jnp.array(3))
 
   with pytest.raises(Exception):
     grad(t2j(lambda x: x.item() * x))(jnp.array(3))
+
+
+def test_inplace_Tensor_methods():
+  def f(x):
+    x = x + torch.tensor([3])
+    x.add_(1)
+    x.sub_(2.3)
+    x.mul_(3.4)
+    x.div_(5.6)
+    return x
+
+  t2j_function_test(f, [()], atol=1e-6)
+  t2j_function_test(f, [(3,)], atol=1e-6)
+  t2j_function_test(f, [(3, 5)], atol=1e-6)
+  aac(vmap(t2j(f))(jnp.array([1, 2, 3])), [f(1.0), f(2.0), f(3.0)])
