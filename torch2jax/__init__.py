@@ -442,6 +442,33 @@ def randn(
   )
 
 
+@implements(torch.randn_like)
+def randn_like(input, dtype=None, layout=None, device=None, requires_grad=False, memory_format=torch.preserve_format):
+  return jax.random.normal(mk_rng(), shape=input.shape, dtype=t2j_dtype(dtype or input.dtype))
+
+
+@implements(torch.randperm)
+def randperm(
+  n: int,
+  generator=None,
+  out=None,
+  dtype=torch.int64,
+  layout=torch.strided,
+  device=None,
+  requires_grad=False,
+  pin_memory=False,
+):
+  assert generator is None, "TODO: implement `generator`"
+  assert out is None, "TODO: implement `out`"
+  return jax.random.permutation(mk_rng(), n).astype(dtype or torch.int64)
+
+
+@implements(torch.sort)
+def sort(input, dim=-1, descending=False, stable=False, *, out=None):
+  assert out is None, "TODO: implement `out`"
+  return jnp.sort(_v(input), axis=dim, stable=stable, descending=descending)
+
+
 @implements(torch.tensor)
 def tensor(data, dtype=None, device=None, requires_grad=False, pin_memory=False):
   assert not requires_grad
