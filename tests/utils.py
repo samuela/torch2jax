@@ -57,3 +57,9 @@ def t2j_function_test(f, input_shapes, rng=random.PRNGKey(123), num_tests=5, **a
           torch.func.grad(f_)(j2t(input)).squeeze(),
           **assert_kwargs,
         )
+
+
+def assert_state_dicts_allclose(actual, desired, **kwargs):
+  assert sorted(actual.keys()) == sorted(desired.keys())
+  for k in actual.keys():
+    aac(actual[k], desired[k], **kwargs)
