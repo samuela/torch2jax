@@ -162,9 +162,11 @@ class Torchish:
     self.value /= other
     return self
 
-  # def bernoulli_(self, p=0.5):
-  #   self.value = jax.random.bernoulli(mk_rng(), shape=self.shape, dtype=self.value.dtype, p=p)
-  #   return self
+  def bernoulli_(self, p=0.5):
+    # Torch accepts ints, floats, and even torch.Tensor's for p, but jax.numpy only accepts floats, so we convert.
+    p = p.item() if isinstance(p, Torchish) else float(p)
+    self.value = jax.random.bernoulli(mk_rng(), shape=self.shape, p=p).astype(self.value.dtype)
+    return self
 
   def uniform_(self, a, b):
     self.value = jax.random.uniform(mk_rng(), shape=self.shape, dtype=self.value.dtype, minval=a, maxval=b)

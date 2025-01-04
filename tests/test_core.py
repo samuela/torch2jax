@@ -1,7 +1,8 @@
+import jax
 import jax.numpy as jnp
 import pytest
 import torch
-from jax import grad, jit, random, vmap
+from jax import grad, jit, vmap
 
 from torch2jax import j2t, t2j
 
@@ -48,6 +49,17 @@ def test_Tensor():
 
   # Test that original torch.Tensor.__new__ implementation is restored
   aac(torch.Tensor([1, 2, 3]), [1, 2, 3])
+
+
+def test_Tensor_bernoulli_():
+  aac(t2j(lambda x: x.bernoulli_(0))(jnp.zeros(5), rng=jax.random.PRNGKey(0)), jnp.zeros(5))
+  aac(t2j(lambda x: x.bernoulli_(1))(jnp.zeros(5), rng=jax.random.PRNGKey(0)), jnp.ones(5))
+  aac(t2j(lambda x: x.bernoulli_(0.0))(jnp.zeros(5), rng=jax.random.PRNGKey(0)), jnp.zeros(5))
+  aac(t2j(lambda x: x.bernoulli_(1.0))(jnp.zeros(5), rng=jax.random.PRNGKey(0)), jnp.ones(5))
+
+  # test torch.Tensor values for p
+  aac(t2j(lambda x: x.bernoulli_(torch.tensor(0.0)))(jnp.zeros(5), rng=jax.random.PRNGKey(0)), jnp.zeros(5))
+  aac(t2j(lambda x: x.bernoulli_(torch.tensor(1.0)))(jnp.zeros(5), rng=jax.random.PRNGKey(0)), jnp.ones(5))
 
 
 def test_Tensor_clone():
