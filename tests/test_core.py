@@ -15,9 +15,10 @@ def test_arange():
 
 
 def test_empty():
-  t2j_function_test(lambda: torch.empty(()), [])
-  t2j_function_test(lambda: torch.empty(2), [])
-  t2j_function_test(lambda: torch.empty((2, 3)), [])
+  # torch.empty returns uninitialized values, so we need to multiply by 0 for deterministic, testable behavior.
+  t2j_function_test(lambda: 0 * torch.empty(()), [])
+  t2j_function_test(lambda: 0 * torch.empty(2), [])
+  t2j_function_test(lambda: 0 * torch.empty((2, 3)), [])
 
 
 def test_ones():
