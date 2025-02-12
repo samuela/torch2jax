@@ -1,5 +1,6 @@
 [project]
 name = "torch2jax"
+# Don't forget to also update the version in flake.nix!
 version = "0.0.1"
 authors = [
   { name="Samuel Ainsworth", email="skainsworth@gmail.com" },

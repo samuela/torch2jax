@@ -22,6 +22,7 @@
       {
         defaultPackage = buildPythonPackage {
           pname = "torch2jax";
+          # Don't forget to also update the version in pyproject.toml!
           version = "0.0.1";
           pyproject = true;
           src = ./.;
