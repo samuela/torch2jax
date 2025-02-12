@@ -26,7 +26,7 @@
           version = "0.0.1";
           pyproject = true;
           src = ./.;
-          propagatedBuildInputs = [
+          dependencies = [
             jax
             torch
           ];
@@ -34,12 +34,8 @@
             jaxlib'
             pytestCheckHook
             torchvision
+            pkgs.writableTmpDirAsHomeHook # torchvision downloads models into HOME.
           ];
-
-          # torchvision downloads models into HOME.
-          preCheck = ''
-            export HOME=$(mktemp -d)
-          '';
 
           pythonImportsCheck = [ "torch2jax" ];
         };
