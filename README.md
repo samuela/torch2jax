@@ -146,3 +146,12 @@ PyTorch has a non-trivial API surface to cover. Contributions are welcome!
 Run the test suite with `pytest` running in `nix develop`. Format the codebase with `ruff check --fix . && ruff format .`. Build the package with `nix build`.
 
 CI is handled by GitHub Actions. When modifying the CI configuration, it can be handy to test locally before pushing. This can be achieved with [act](https://github.com/nektos/act/issues/269). Run `act` within `nix develop` to run the CI locally.
+
+## License
+torch2jax is licensed depending on your usecase. In general, torch2jax is licensed under the [GPLv3](https://www.gnu.org/licenses/gpl-3.0.en.html) license. That being said, torch2jax is also available under an [MIT](https://opensource.org/license/mit) license in the following contexts:
+
+1. You are using torch2jax for personal, non-commercial use.
+2. You are using torch2jax in a not-for-profit organization and for non-commercial use, eg. academia.
+3. You are using torch2jax in a commercial context within a company of 25 people or fewer.
+
+Please reach out to discuss licensing options if you are interested in using torch2jax under an MIT license in any other context. A portion of all proceeds go to axial spondyloarthritis (aka ankylosing spondylitis) research.
