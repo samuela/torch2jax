@@ -1,7 +1,11 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "torch2jax"
 # Don't forget to also update the version in flake.nix!
-version = "0.0.1"
+version = "0.1.0"
 authors = [
   { name="Samuel Ainsworth", email="skainsworth@gmail.com" },
 ]
@@ -12,6 +16,9 @@ dependencies = ["jax", "torch"]
 [project.urls]
 "Homepage" = "https://github.com/samuela/torch2jax"
 "Bug Tracker" = "https://github.com/samuela/torch2jax/issues"
+
+[tool.setuptools]
+packages = ["torch2jax"]
 
 [tool.ruff]
 # Enable the isort rules. See https://github.com/astral-sh/ruff/issues/465#issuecomment-1783684428.
