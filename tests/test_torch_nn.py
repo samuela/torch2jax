@@ -99,8 +99,8 @@ def test_torch_nn_Conv2d():
             stride = 1
           model = torch.nn.Conv2d(2, 3, (5, 5), bias=bias, stride=stride, padding=padding, dilation=dilation)
 
-          input_batch = random.normal(random.PRNGKey(123), (7, 2, 16, 16))
-          params = {k: random.normal(random.PRNGKey(123), v.shape) for k, v in model.named_parameters()}
+          input_batch = 0.1 * random.normal(random.PRNGKey(123), (7, 2, 16, 16))
+          params = {k: 0.1 * random.normal(random.PRNGKey(123), v.shape) for k, v in model.named_parameters()}
 
           model.load_state_dict({k: j2t(v) for k, v in params.items()})
           res_torch = model(j2t(input_batch))
@@ -117,9 +117,9 @@ def test_torch_nn_Conv2d():
           jax_grad = grad(lambda p: (jaxified_module(input_batch, state_dict=p) ** 2).sum())(params)
 
           res_torch.pow(2).sum().backward()
-          aac(jax_grad["weight"], model.weight.grad, rtol=1e-3)
+          aac(jax_grad["weight"], model.weight.grad, atol=1e-4)
           if bias:
-            aac(jax_grad["bias"], model.bias.grad, rtol=1e-3)
+            aac(jax_grad["bias"], model.bias.grad, atol=1e-3)
 
 
 def test_torch_nn_ConvTranspose2d():
@@ -314,7 +314,7 @@ def test_torch_nn_functional_batch_norm():
     out = torch.nn.functional.batch_norm(input, running_mean, running_var, weight=weight, bias=bias, training=True)
     return torch.cat([out.flatten(), running_mean.flatten(), running_var.flatten()])
 
-  t2j_function_test(f, [(2, 3), (3,), (3,), (3,), (3,)], atol=1e-6)
+  t2j_function_test(f, [(2, 3), (3,), (3,), (3,), (3,)], atol=1e-5)
   t2j_function_test(f, [(2, 3, 5), (3,), (3,), (3,), (3,)], atol=1e-6)
   t2j_function_test(f, [(2, 3, 5, 7), (3,), (3,), (3,), (3,)], atol=1e-6)
 

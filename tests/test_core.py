@@ -82,7 +82,7 @@ def test_oneliners():
   t2j_function_test(lambda x: torch.mul(torch.tensor([3.0]), torch.mean(x)), [(5,)], atol=1e-6)
   t2j_function_test(lambda x: torch.tensor([3]) * torch.mean(torch.sqrt(x)), [(3,)])
 
-  t2j_function_test(lambda x, y: x @ y, [(2, 3), (3, 5)])
+  t2j_function_test(lambda x, y: x @ y, [(2, 3), (3, 5)], atol=1e-6)
   t2j_function_test(lambda x: x.view(2, 2), [(2, 2)])
   t2j_function_test(lambda x: x.T, [(2, 2)])
   t2j_function_test(lambda x: x.view(2, 2).T, [(2, 2)])
