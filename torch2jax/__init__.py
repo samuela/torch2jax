@@ -27,9 +27,9 @@ _RNG_POOPER_STACK = []
 
 def mk_rng() -> jax.random.PRNGKey:
   assert len(_RNG_POOPER_STACK) > 0, "Attempted `mk_rng()` outside of a `RngPooperContext`"
-  assert (
-    _RNG_POOPER_STACK[-1] is not None
-  ), "Attempted `mk_rng()` with a `None` `RngPooperContext`. You're probably seeing this error message because you forgot to include a `rng` kwarg in your function call: `t2j(f)(..., rng=jax.random.PRNGKey(0))`. "
+  assert _RNG_POOPER_STACK[-1] is not None, (
+    "Attempted `mk_rng()` with a `None` `RngPooperContext`. You're probably seeing this error message because you forgot to include a `rng` kwarg in your function call: `t2j(f)(..., rng=jax.random.PRNGKey(0))`. "
+  )
   return _RNG_POOPER_STACK[-1].poop()
 
 
@@ -82,9 +82,9 @@ HANDLED_FUNCTIONS = {}
 class Torchish:
   def __init__(self, value):
     # See https://github.com/google/jax/issues/2115 re `isinstance(value, jnp.ndarray)`.
-    assert (
-      isinstance(value, jnp.ndarray) or isinstance(value, int) or isinstance(value, float)
-    ), f"Tried to create Torchish with unsupported type: {type(value)}"
+    assert isinstance(value, jnp.ndarray) or isinstance(value, int) or isinstance(value, float), (
+      f"Tried to create Torchish with unsupported type: {type(value)}"
+    )
     self.value = value
 
   # In order for PyTorch to accept an object as one of its own and allow dynamic dispatch it must either subclass
@@ -120,9 +120,9 @@ class Torchish:
     newshape = [new if new != -1 else old for old, new in zip(self.shape, sizes)]
     for i, (old, new) in enumerate(zip(self.shape, sizes)):
       if old != 1:
-        assert (
-          newshape[i] == old
-        ), f"Attempted to expand dimension {i} from {old} to {new}. Cannot expand on non-singleton dimensions."
+        assert newshape[i] == old, (
+          f"Attempted to expand dimension {i} from {old} to {new}. Cannot expand on non-singleton dimensions."
+        )
 
     return Torchish(jnp.broadcast_to(self.value, newshape))
 
