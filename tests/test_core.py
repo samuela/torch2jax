@@ -16,9 +16,30 @@ def test_arange():
 
 def test_empty():
   # torch.empty returns uninitialized values, so we need to multiply by 0 for deterministic, testable behavior.
-  t2j_function_test(lambda: 0 * torch.empty(()), [])
-  t2j_function_test(lambda: 0 * torch.empty(2), [])
-  t2j_function_test(lambda: 0 * torch.empty((2, 3)), [])
+  # NaNs are possible, so we need to convert them first. See
+  # https://discuss.pytorch.org/t/torch-empty-returns-nan/181389 and https://github.com/samuela/torch2jax/actions/runs/13348964668/job/37282967463.
+  t2j_function_test(lambda: 0 * torch.nan_to_num(torch.empty(())), [])
+  t2j_function_test(lambda: 0 * torch.nan_to_num(torch.empty(2)), [])
+  t2j_function_test(lambda: 0 * torch.nan_to_num(torch.empty((2, 3))), [])
+
+
+def test_nan_to_num():
+  # Test handling of NaN values
+  t2j_function_test(lambda: torch.nan_to_num(torch.tensor([float("nan"), 1.0, 2.0])), [])
+
+  # Test handling of positive infinity
+  t2j_function_test(lambda: torch.nan_to_num(torch.tensor([float("inf"), 1.0, 2.0])), [])
+
+  # Test handling of negative infinity
+  t2j_function_test(lambda: torch.nan_to_num(torch.tensor([float("-inf"), 1.0, 2.0])), [])
+
+  # Test handling of all special values with custom replacements
+  t2j_function_test(
+    lambda: torch.nan_to_num(
+      torch.tensor([float("nan"), float("inf"), float("-inf")]), nan=0.0, posinf=1.0, neginf=-1.0
+    ),
+    [],
+  )
 
 
 def test_ones():
