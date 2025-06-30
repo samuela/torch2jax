@@ -126,6 +126,9 @@ class Torchish:
 
     return Torchish(jnp.broadcast_to(self.value, newshape))
 
+  def unbind(self, dim=0):
+    return tuple( Torchish(self.value[(slice(None),)*dim + (i,)]) for i in range(self.value.shape[dim]))
+
   # fmt: off
   def __add__(self, other): return Torchish(self.value + _coerce(other))
   def __getitem__(self, key): return Torchish(self.value.__getitem__(key))
