@@ -126,9 +126,6 @@ class Torchish:
 
     return Torchish(jnp.broadcast_to(self.value, newshape))
 
-  def unbind(self, dim=0):
-    return tuple( Torchish(self.value[(slice(None),)*dim + (i,)]) for i in range(self.value.shape[dim]))
-
   # fmt: off
   def __add__(self, other): return Torchish(self.value + _coerce(other))
   def __getitem__(self, key): return Torchish(self.value.__getitem__(key))
@@ -297,6 +294,11 @@ def bernoulli(input, generator=None, out=None):
 @implements(torch.cat)
 def cat(tensors, dim=0):
   return jnp.concatenate([_v(x) for x in tensors], axis=dim)
+
+
+@implements(torch.unbind, Torchishify_output=False)
+def unbind(input, dim=0) -> Sequence[Torchish]:
+  return tuple(Torchish(input.value[(slice(None),) * dim + (i,)]) for i in range(input.value.shape[dim]))
 
 
 @implements(torch.empty)
