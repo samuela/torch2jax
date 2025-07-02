@@ -159,6 +159,7 @@ class Torchish:
   def transpose(*args, **kwargs): return torch.transpose(*args, **kwargs)
   def view(self, *shape): return Torchish(jnp.reshape(self.value, shape))
   reshape = view
+  def unbind(*args, **kwargs): return torch.unbind(*args, **kwargs)
   # fmt: on
 
   def add_(self, other):
@@ -294,11 +295,6 @@ def bernoulli(input, generator=None, out=None):
 @implements(torch.cat)
 def cat(tensors, dim=0):
   return jnp.concatenate([_v(x) for x in tensors], axis=dim)
-
-
-@implements(torch.unbind, Torchishify_output=False)
-def unbind(input, dim=0) -> Sequence[Torchish]:
-  return tuple(Torchish(input.value[(slice(None),) * dim + (i,)]) for i in range(input.value.shape[dim]))
 
 
 @implements(torch.empty)
@@ -492,6 +488,11 @@ def tensor(data, dtype=None, device=None, requires_grad=False, pin_memory=False)
   return jnp.array(
     data.value if isinstance(data, Torchish) else data, dtype=t2j_dtype(dtype or torch.get_default_dtype())
   )
+
+
+@implements(torch.unbind, Torchishify_output=False)
+def unbind(input, dim=0) -> Sequence[Torchish]:
+  return tuple(Torchish(input.value[(slice(None),) * dim + (i,)]) for i in range(input.value.shape[dim]))
 
 
 @implements(torch.zeros)
