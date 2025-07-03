@@ -77,6 +77,13 @@ def test_zeros_like():
   t2j_function_test(lambda x: torch.zeros_like(x), [(2, 3)])
 
 
+def test_unbind():
+  t2j_function_test(lambda x: torch.unbind(x)[0], [(2, 3)])
+  t2j_function_test(lambda x: torch.unbind(x, dim=1)[1], [(2, 3)])
+  t2j_function_test(lambda x: x.unbind()[0], [(2, 3)])
+  t2j_function_test(lambda x: x.unbind(1)[1], [(2, 3)])
+
+
 def test_oneliners():
   t2j_function_test(lambda x: torch.pow(x, 2), [()])
   t2j_function_test(lambda x: torch.pow(x, 2), [(3,)])
