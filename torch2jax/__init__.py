@@ -916,6 +916,24 @@ def relu(x, inplace=False):
     return Torchish(jax.nn.relu(_v(x)))
 
 
+@implements(torch.nn.functional.prelu)
+def prelu(a: Torchish, weight: Torchish):
+  if weight.numel() != 1:
+    assert a.ndim > 0, "Not allow zero-dim input tensor."
+    channel_size = a.shape[1] if a.ndim >= 2 else 1
+    assert weight.numel() == channel_size, (
+      f"Mismatch of parameter numbers and input channel size. Found parameter numbers = {weight.numel()} and channel size = {channel_size}."
+    )
+  assert weight.ndim == 0 or weight.ndim == 1, (
+    f"prelu: Expected `weight` to be a scalar or 1D tensor, but got: ndim = {weight.ndim}"
+  )
+  if a.ndim == 0:
+    weight.value = weight[0] if weight.ndim == 1 else weight.value
+  else:
+    weight.value = jax.lax.broadcast_in_dim(_v(weight), a.shape, () if weight.ndim == 0 else (0 if a.ndim == 1 else 1,))
+  return jnp.where(_v(a) > 0, _v(a), _v(a) * _v(weight))
+
+
 @implements(torch.nn.functional.scaled_dot_product_attention)
 def scaled_dot_product_attention(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False):
   assert attn_mask is None, "TODO: implement attn_mask"
