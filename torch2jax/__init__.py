@@ -571,8 +571,6 @@ def conv2d(
   dilation=1,
   groups=1,
 ):
-  assert groups == 1, "conv2d with groups != 1 is not yet supported"
-
   # jax.lax.conv_general_dilated supports different lo/hi padding, whereas PyTorch applies the same padding on both
   # sides. Note that we can't use the same trick as in conv_transpose2d since we also have to support "valid" and "same"
   # values for `padding`.
@@ -586,6 +584,7 @@ def conv2d(
     window_strides=stride,
     padding=padding,
     rhs_dilation=dilation,
+    feature_group_count=groups,
   )
   if bias is not None:
     res += _v(bias)[jnp.newaxis, :, jnp.newaxis, jnp.newaxis]
