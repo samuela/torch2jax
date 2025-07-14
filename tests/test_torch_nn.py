@@ -184,7 +184,6 @@ def test_torch_nn_Dropout():
   assert jnp.mean(res_jax == res_torch.numpy(force=True)) > 0.5
 
 
-
 def test_torch_nn_Linear():
   model = torch.nn.Linear(2, 5)
   input_batch = random.normal(random.PRNGKey(123), (3, 2))
@@ -343,8 +342,8 @@ def test_torch_nn_functional_batch_norm():
 
 
 def test_torch_nn_functional_prelu():
-    t2j_function_test(torch.nn.functional.prelu, [(6, 6), (1)], atol=1e-6)
-    t2j_function_test(torch.nn.functional.prelu, [(5, 3, 112, 122), (3,)], atol=1e-6)
+  t2j_function_test(torch.nn.functional.prelu, [(6, 6), (1)], atol=1e-6)
+  t2j_function_test(torch.nn.functional.prelu, [(5, 3, 112, 122), (3,)], atol=1e-6)
 
 
 def test_torch_nn_functional_scaled_dot_product_attention():
