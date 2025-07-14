@@ -928,10 +928,10 @@ def prelu(input: Torchish, weight: Torchish):
     f"prelu: Expected `weight` to be a scalar or 1D tensor, but got: ndim = {weight.ndim}"
   )
   if input.ndim == 0:
-    weight.value = weight[0] if weight.ndim == 1 else weight.value
+    weight = weight[0] if weight.ndim == 1 else weight
   else:
-    weight.value = jax.lax.broadcast_in_dim(
-      _v(weight), input.shape, () if weight.ndim == 0 else (0 if input.ndim == 1 else 1,)
+    weight = Torchish(
+      jax.lax.broadcast_in_dim(_v(weight), input.shape, () if weight.ndim == 0 else (0 if input.ndim == 1 else 1,))
     )
   return jnp.where(_v(input) > 0, _v(input), _v(input) * _v(weight))
 
