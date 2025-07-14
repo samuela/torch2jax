@@ -297,6 +297,28 @@ def test_torch_nn_MaxPool2d():
         aac(jax_grad, x.grad)
 
 
+def test_torch_nn_PReLU():
+  model = torch.nn.PReLU(3)
+  input_batch = random.normal(random.PRNGKey(123), (1, 3, 112, 112))
+  params = {k: 0.1 * random.normal(random.PRNGKey(123), v.shape) for k, v in model.named_parameters()}
+  model.load_state_dict({k: j2t(v) for k, v in params.items()})
+  res_torch = model(j2t(input_batch))
+
+  jaxified_module = t2j(model)
+  res_jax = jaxified_module(input_batch, state_dict=params)
+  res_jax_jit = jit(jaxified_module)(input_batch, state_dict=params)
+
+  # Test forward pass without and with jit
+  aac(res_jax, res_torch.numpy(force=True), atol=1e-5)
+  aac(res_jax_jit, res_torch.numpy(force=True), atol=1e-5)
+
+  # Test gradients
+  jax_grad = grad(lambda p: (jaxified_module(input_batch, state_dict=p) ** 2).sum())(params)
+
+  res_torch.pow(2).sum().backward()
+  aac(jax_grad["weight"], model.weight.grad, atol=1e-3)
+
+
 ################################################################################
 # torch.nn.functional
 
@@ -321,6 +343,11 @@ def test_torch_nn_functional_batch_norm():
   t2j_function_test(f, [(2, 3), (3,), (3,), (3,), (3,)], atol=1e-5)
   t2j_function_test(f, [(2, 3, 5), (3,), (3,), (3,), (3,)], atol=1e-6)
   t2j_function_test(f, [(2, 3, 5, 7), (3,), (3,), (3,), (3,)], atol=1e-6)
+
+
+def test_torch_nn_functional_prelu():
+  t2j_function_test(torch.nn.functional.prelu, [(6, 6), (1)], atol=1e-6)
+  t2j_function_test(torch.nn.functional.prelu, [(5, 3, 112, 122), (3,)], atol=1e-6)
 
 
 def test_torch_nn_functional_scaled_dot_product_attention():
