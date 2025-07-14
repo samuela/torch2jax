@@ -90,36 +90,40 @@ def test_torch_nn_BatchNorm1d():
 
 
 def test_torch_nn_Conv2d():
-  for bias in [False, True]:
-    for stride in [1, (1, 1), 2, (2, 2), (1, 3), (3, 1)]:
-      for padding in [0, 1, 2, "valid", "same", (1, 2)]:
-        for dilation in [1, 2, (1, 1), (2, 3)]:
-          if padding == "same":
-            # ValueError: padding='same' is not supported for strided convolutions
-            stride = 1
-          model = torch.nn.Conv2d(2, 3, (5, 5), bias=bias, stride=stride, padding=padding, dilation=dilation)
+  for out_channels in [4, 6, 8]:
+    for bias in [False, True]:
+      for stride in [1, (1, 1), 2, (2, 2), (1, 3), (3, 1)]:
+        for padding in [0, 1, 2, "valid", "same", (1, 2)]:
+          for dilation in [1, 2, (1, 1), (2, 3)]:
+            for groups in [1, 2]:
+              if padding == "same":
+                # ValueError: padding='same' is not supported for strided convolutions
+                stride = 1
+              model = torch.nn.Conv2d(
+                2, out_channels, (5, 5), bias=bias, stride=stride, padding=padding, dilation=dilation, groups=groups
+              )
 
-          input_batch = 0.1 * random.normal(random.PRNGKey(123), (7, 2, 16, 16))
-          params = {k: 0.1 * random.normal(random.PRNGKey(123), v.shape) for k, v in model.named_parameters()}
+              input_batch = 0.1 * random.normal(random.PRNGKey(123), (7, 2, 16, 16))
+              params = {k: 0.1 * random.normal(random.PRNGKey(123), v.shape) for k, v in model.named_parameters()}
 
-          model.load_state_dict({k: j2t(v) for k, v in params.items()})
-          res_torch = model(j2t(input_batch))
+              model.load_state_dict({k: j2t(v) for k, v in params.items()})
+              res_torch = model(j2t(input_batch))
 
-          jaxified_module = t2j(model)
-          res_jax = jaxified_module(input_batch, state_dict=params)
-          res_jax_jit = jit(jaxified_module)(input_batch, state_dict=params)
+              jaxified_module = t2j(model)
+              res_jax = jaxified_module(input_batch, state_dict=params)
+              res_jax_jit = jit(jaxified_module)(input_batch, state_dict=params)
 
-          # Test forward pass with and without jax.jit
-          aac(res_jax, res_torch.numpy(force=True), atol=1e-5)
-          aac(res_jax_jit, res_torch.numpy(force=True), atol=1e-5)
+              # Test forward pass with and without jax.jit
+              aac(res_jax, res_torch.numpy(force=True), atol=1e-5)
+              aac(res_jax_jit, res_torch.numpy(force=True), atol=1e-5)
 
-          # Test gradients
-          jax_grad = grad(lambda p: (jaxified_module(input_batch, state_dict=p) ** 2).sum())(params)
+              # Test gradients
+              jax_grad = grad(lambda p: (jaxified_module(input_batch, state_dict=p) ** 2).sum())(params)
 
-          res_torch.pow(2).sum().backward()
-          aac(jax_grad["weight"], model.weight.grad, atol=1e-4)
-          if bias:
-            aac(jax_grad["bias"], model.bias.grad, atol=1e-3)
+              res_torch.pow(2).sum().backward()
+              aac(jax_grad["weight"], model.weight.grad, atol=1e-4)
+              if bias:
+                aac(jax_grad["bias"], model.bias.grad, atol=1e-3)
 
 
 def test_torch_nn_ConvTranspose2d():
