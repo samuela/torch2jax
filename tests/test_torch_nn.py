@@ -342,6 +342,11 @@ def test_torch_nn_functional_batch_norm():
   t2j_function_test(f, [(2, 3, 5, 7), (3,), (3,), (3,), (3,)], atol=1e-6)
 
 
+def test_torch_nn_functional_prelu():
+    t2j_function_test(torch.nn.functional.prelu, [(6, 6), (1)], atol=1e-6)
+    t2j_function_test(torch.nn.functional.prelu, [(5, 3, 112, 122), (3,)], atol=1e-6)
+
+
 def test_torch_nn_functional_scaled_dot_product_attention():
   t2j_function_test(lambda x, y: x @ y, [(2, 3, 5), (5, 7)], atol=1e-6)
 
