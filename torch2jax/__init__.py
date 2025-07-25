@@ -591,6 +591,51 @@ def conv2d(
   return res
 
 
+@implements(torch.nn.functional.conv3d)
+def conv3d(
+        input,
+        weight,
+        bias=None,
+        stride=1,
+        padding: Union[int, Tuple[int, int, int], Literal["same", "valid"]] = 0,
+        dilation=1,
+        groups=1,
+):
+  assert groups == 1, "conv3d with groups != 1 is not yet supported"
+
+  # Convert stride, padding, and dilation to tuples if they're integers
+  if isinstance(stride, int):
+    stride = (stride, stride, stride)
+  if isinstance(dilation, int):
+    dilation = (dilation, dilation, dilation)
+
+  # Handle padding
+  if isinstance(padding, tuple):
+    p1, p2, p3 = padding
+    padding = [(p1, p1), (p2, p2), (p3, p3)]
+  elif padding == "same":
+    padding = "SAME"
+  elif padding == "valid":
+    padding = "VALID"
+  elif isinstance(padding, int):
+    padding = [(padding, padding), (padding, padding), (padding, padding)]
+
+  # Perform the 3D convolution
+  res = jax.lax.conv_general_dilated(
+    lhs=_v(input),
+    rhs=_v(weight),
+    window_strides=stride,
+    padding=padding,
+    rhs_dilation=dilation,
+    dimension_numbers=('NCDHW', 'OIDHW', 'NCDHW')  # NCDHW format for 3D conv
+  )
+
+  # Add bias if present
+  if bias is not None:
+    res += _v(bias)[jnp.newaxis, :, jnp.newaxis, jnp.newaxis, jnp.newaxis]
+  return res
+
+
 @implements(torch.nn.functional.conv_transpose2d)
 def conv_transpose2d(input, weight, bias=None, stride=1, padding=0, output_padding=0, groups=1, dilation=1):
   # This implementation is taken from this PR https://github.com/google/jax/pull/5772
@@ -611,6 +656,30 @@ def conv_transpose2d(input, weight, bias=None, stride=1, padding=0, output_paddi
     res += _v(bias)[jnp.newaxis, :, jnp.newaxis, jnp.newaxis]
   return res
 
+@implements(torch.nn.functional.conv_transpose3d)
+def conv_transpose3d(input, weight, bias=None, stride=1, padding=0, output_padding=0, groups=1, dilation=1):
+  assert input.ndim == 5, "TODO: implement non-batched input"
+  assert groups == 1, "TODO: implement groups != 1"
+
+  # Handle padding (can be int or tuple)
+  if isinstance(padding, int):
+    pd, ph, pw = (padding, padding, padding)
+  else:
+    pd, ph, pw = padding
+
+  res = gradient_based_conv_transpose(
+    lhs=_v(input),
+    rhs=_v(weight),
+    strides=stride,
+    padding=[(pd, pd), (ph, ph), (pw, pw)],
+    output_padding=output_padding,
+    dilation=dilation,
+    dimension_numbers=("NCDHW", "OIDHW", "NCDHW"),
+  )
+
+  if bias is not None:
+    res += _v(bias)[jnp.newaxis, :, jnp.newaxis, jnp.newaxis, jnp.newaxis]
+  return res
 
 def _deconv_output_length(input_length, filter_size, padding, output_padding=None, stride=0, dilation=1):
   """Taken from https://github.com/google/jax/pull/5772
@@ -914,6 +983,18 @@ def relu(x, inplace=False):
   else:
     return Torchish(jax.nn.relu(_v(x)))
 
+
+@implements(torch.nn.functional.leaky_relu, Torchishify_output=False)
+def leaky_relu(x, negative_slope=0.01, inplace=False):
+  def _leaky_relu(x):
+    return jax.numpy.where(x >= 0, x, negative_slope * x)
+
+  if inplace:
+    assert isinstance(x, Torchish), "inplace operation requires Torchish input"
+    x.value = _leaky_relu(x.value)
+    return x
+  else:
+    return Torchish(_leaky_relu(_v(x)))
 
 @implements(torch.nn.functional.prelu)
 def prelu(input: Torchish, weight: Torchish):
