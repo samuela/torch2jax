@@ -278,7 +278,7 @@ def silu(x, *args, **kwargs):
 
 @implements(torch.device, Torchishify_output=False)
 def torch_device(type):
-  return torch.device("cpu")
+  return torch.device(type)
 
 
 @implements(torch.mean)
