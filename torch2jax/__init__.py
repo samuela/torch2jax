@@ -974,26 +974,23 @@ def prelu(input: Torchish, weight: Torchish):
 
 
 @implements(torch.nn.functional.scaled_dot_product_attention)
-def scaled_dot_product_attention(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False):
-  assert attn_mask is None, "TODO: implement attn_mask"
+def scaled_dot_product_attention(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None):
   assert dropout_p == 0.0, "TODO: implement dropout"
-  assert not is_causal, "TODO: implement is_causal"
-
-  # query is (N, ..., L, E)
-  # key, value are (N, ..., S, E)
-
   Q, K, V = _v(query), _v(key), _v(value)
-  # L = Q.shape[-2]
-  # S = K.shape[-2]
-
-  # From https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html
-  # attn_mask = jnp.tril(jnp.ones(L, S, dtype=jnp.bool)) if is_causal else attn_mask
-  # See https://github.com/pytorch/pytorch/issues/110341.
-  # attn_mask = attn_mask.masked_fill(not attn_mask, -float('inf')) if attn_mask.dtype == jnp.bool else attn_mask
-
-  attn_weight = jax.nn.softmax((Q @ jnp.swapaxes(K, -2, -1) / math.sqrt(Q.shape[-1])), axis=-1)
-  # attn_weight = torch.dropout(attn_weight, dropout_p)
-  return attn_weight @ V
+  # torch has (batch, num_heads, seq_len, head_dim) for Q, K, V
+  # jax has (batch, seq_len, num_heads, head_dim)
+  Q, K, V = jnp.swapaxes(Q, -2, -3), jnp.swapaxes(K, -2, -3), jnp.swapaxes(V, -2, -3)
+  mask, bias = None, None
+  if attn_mask is not None:
+    attn_mask = _v(attn_mask)
+    if jnp.issubdtype(attn_mask.dtype, jnp.bool_):
+      mask = attn_mask
+    elif jnp.issubdtype(attn_mask.dtype, jnp.floating):
+      bias = attn_mask
+    else:
+      raise ValueError(f"Unsupported attn_mask dtype: {attn_mask.dtype}. Expected bool or float.")
+  output = jax.nn.dot_product_attention(Q, K, V, scale=scale, mask=mask, bias=bias, is_causal=is_causal)
+  return jnp.swapaxes(output, -2, -3)
 
 
 # NOTE: the "torch.Tensor" type annotations here are a lie, or at least an approximation: In reality, they can be
