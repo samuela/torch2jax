@@ -157,10 +157,15 @@ class Torchish:
   def size(self): return self.shape
   def sum(*args, **kwargs): return torch.sum(*args, **kwargs)
   def transpose(*args, **kwargs): return torch.transpose(*args, **kwargs)
-  def view(self, *shape): return Torchish(jnp.reshape(self.value, shape))
-  reshape = view
   def unbind(*args, **kwargs): return torch.unbind(*args, **kwargs)
   # fmt: on
+
+  def view(self, *shape):
+    if len(shape) == 1 and isinstance(shape[0], Sequence):
+      shape = shape[0]
+    return Torchish(jnp.reshape(self.value, shape))
+
+  reshape = view
 
   def add_(self, other):
     self.value += other
@@ -242,15 +247,21 @@ auto_implements(torch.nan_to_num, jnp.nan_to_num)
 auto_implements(torch.add, jnp.add)
 auto_implements(torch.exp, jnp.exp)
 auto_implements(torch.nn.functional.gelu, jax.nn.gelu)
-auto_implements(torch.mean, jnp.mean)
 auto_implements(torch.mul, jnp.multiply)
 auto_implements(torch.permute, jnp.transpose, dont_coerce_argnums=(1, 2))  # TODO: do we need argnum 2?
 auto_implements(torch.pow, jnp.power)
 auto_implements(torch.sigmoid, jax.nn.sigmoid)
 auto_implements(torch.sqrt, jnp.sqrt)
-auto_implements(torch.sum, jnp.sum)
 auto_implements(torch.tanh, jnp.tanh)
 auto_implements(torch.transpose, jnp.swapaxes)
+@implements(torch.mean)
+def mean(tensor, dim=None, keepdim=False, dtype=None):
+  return jnp.mean(_v(tensor), axis=dim, keepdims=keepdim, dtype=t2j_dtype(dtype or tensor.dtype))
+
+
+@implements(torch.sum)
+def sum(tensor, dim=None, keepdim=False, dtype=None):
+  return jnp.sum(_v(tensor), axis=dim, keepdims=keepdim, dtype=t2j_dtype(dtype or tensor.dtype))
 
 
 @implements(torch._assert, Torchishify_output=False)
