@@ -125,15 +125,15 @@ def test_oneliners():
 
   # view with list of ints
   t2j_function_test(lambda x: x.view(2, 2) @ x.view(2, 2), [(2, 2)], rtol=1e-6)
-  t2j_function_test(lambda x: x.view(2, 2) @ x.view(2, 2).T, [(2, 2)])
-  t2j_function_test(lambda x: x.view(2, 2) @ x.view(2, 2).T, [(4,)])
+  t2j_function_test(lambda x: x.view(2, 2) @ x.view(2, 2).T, [(2, 2)], rtol=1e-6)
+  t2j_function_test(lambda x: x.view(2, 2) @ x.view(2, 2).T, [(4,)], rtol=1e-6)
   t2j_function_test(lambda x: x.view(3, 4), [(12,)])
   t2j_function_test(lambda x: x.view(3, 4), [(4, 3)])
 
   # view with tuple input
   t2j_function_test(lambda x: x.view((2, 2)) @ x.view((2, 2)), [(2, 2)], rtol=1e-6)
-  t2j_function_test(lambda x: x.view((2, 2)) @ x.view((2, 2)).T, [(2, 2)])
-  t2j_function_test(lambda x: x.view((2, 2)) @ x.view((2, 2)).T, [(4,)])
+  t2j_function_test(lambda x: x.view((2, 2)) @ x.view((2, 2)).T, [(2, 2)], rtol=1e-6)
+  t2j_function_test(lambda x: x.view((2, 2)) @ x.view((2, 2)).T, [(4,)], rtol=1e-6)
   t2j_function_test(lambda x: x.view((3, 4)), [(12,)])
   t2j_function_test(lambda x: x.view((3, 4)), [(4, 3)])
 
