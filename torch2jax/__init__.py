@@ -1,6 +1,5 @@
 import copy
 import functools
-import math
 from contextlib import contextmanager
 from typing import Literal, Optional, Sequence, Tuple, Union
 
