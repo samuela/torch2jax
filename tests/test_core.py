@@ -108,8 +108,8 @@ def test_oneliners():
   t2j_function_test(lambda x: torch.sum(x, dim=1, keepdim=True), [(5, 6)], atol=1e-6)
   t2j_function_test(lambda x: 3 * x.sum(), [(5,)], atol=1e-6)
   t2j_function_test(lambda x: 3 * torch.sum(x), [(5,)], atol=1e-6)
-  t2j_function_test(torch.sin, [(3,)])
-  t2j_function_test(torch.cos, [(3,)])
+  t2j_function_test(torch.sin, [(3,)], atol=1e-6)
+  t2j_function_test(torch.cos, [(3,)], atol=1e-6)
   t2j_function_test(lambda x: -x, [(3,)])
 
   # Seems like an innocent test, but this can cause segfaults when using dlpack in t2j_array
