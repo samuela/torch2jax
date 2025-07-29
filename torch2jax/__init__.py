@@ -364,8 +364,8 @@ def multinomial(input, num_samples, replacement=False, generator=None, out=None)
 
 
 @implements(torch.mean)
-def mean(input, dim=None, keepdim=False, dtype=None):
-  return jnp.mean(_v(input), axis=dim, keepdims=keepdim, dtype=t2j_dtype(dtype or input.dtype))
+def mean(input, dim=None, keepdim=False, dtype=None, out=None):
+  return jnp.mean(_v(input), axis=dim, keepdims=keepdim, dtype=t2j_dtype(dtype or input.dtype), out=out)
 
 
 @implements(torch.normal)
@@ -514,8 +514,8 @@ def sort(input, dim=-1, descending=False, stable=False, *, out=None):
 
 
 @implements(torch.sum)
-def sum(input, dim=None, keepdim=False, dtype=None):
-  return jnp.sum(_v(input), axis=dim, keepdims=keepdim, dtype=t2j_dtype(dtype or input.dtype))
+def sum(input, dim=None, keepdim=False, dtype=None, out=None):
+  return jnp.sum(_v(input), axis=dim, keepdims=keepdim, dtype=t2j_dtype(dtype or input.dtype), out=out)
 
 
 @implements(torch.tensor)
@@ -951,7 +951,7 @@ def relu(x, inplace=False):
     return Torchish(jax.nn.relu(_v(x)))
 
 
-@implements(torch.nn.functional.silu)
+@implements(torch.nn.functional.silu, Torchishify_output=False)
 def silu(x, inplace=False):
   if inplace:
     assert isinstance(x, Torchish)
