@@ -96,13 +96,18 @@ class Torchish:
 
   # fmt: off
   @property
+  def device(self):
+    try:  # Attempt to get the device from the value's device.
+      return torch.device(self.value.device.type.replace("gpu", "cuda"))
+    except Exception:  # otherwise, assume CPU, e.g. abstrace arrays, tpu arrays
+      return torch.device("cpu")
+
+  @property
   def dtype(self) -> torch.dtype: return j2t_dtype(self.value.dtype)
   @property
   def ndim(self) -> int: return len(self.value.shape)
   @property
   def shape(self): return self.value.shape
-  @property
-  def device(self): return torch.device("cpu")
   # fmt: on
 
   @property
@@ -139,34 +144,34 @@ class Torchish:
   def __ge__(self, other): return Torchish(self.value >= _coerce(other))
   def __matmul__(self, other): return Torchish(self.value @ _coerce(other))
   def __mul__(self, other): return Torchish(self.value * _coerce(other))
+  def __neg__(self): return Torchish(-self.value)
   def __pow__(self, other): return Torchish(self.value ** _coerce(other))
   def __radd__(self, other): return Torchish(_coerce(other) + self.value)
   def __rmatmul__(self, other): return Torchish(_coerce(other) @ self.value)
   def __rmul__(self, other): return Torchish(_coerce(other) * self.value)
   def __rsub__(self, other): return Torchish(_coerce(other) - self.value)
   def __sub__(self, other): return Torchish(self.value - _coerce(other))
-  def __neg__(self): return Torchish(-self.value)
 
   # For some reason `foo = torch.foo` doesn't work on these
   def clone(self): return Torchish(self.value.copy())
+  def contiguous(self): return self
+  def cos(*args, **kwargs): return torch.cos(*args, **kwargs)
   def detach(self): return Torchish(jax.lax.stop_gradient(self.value))
   def dim(self): return self.ndim
   def flatten(*args, **kwargs): return torch.flatten(*args, **kwargs)
+  def float(self): return Torchish(jnp.astype(self.value, jnp.float32))
   def item(self): return self.value.item()
   def mean(*args, **kwargs): return torch.mean(*args, **kwargs)
   def numel(self): return self.value.size
   def permute(self, *shape): return torch.permute(self, shape)
   def pow(*args, **kwargs): return torch.pow(*args, **kwargs)
+  def sin(*args, **kwargs): return torch.sin(*args, **kwargs)
   def size(self): return self.shape
   def sum(*args, **kwargs): return torch.sum(*args, **kwargs)
+  def to(self, *args, **kwargs): return self  # ignore device movement, jax manages its own placement.
   def transpose(*args, **kwargs): return torch.transpose(*args, **kwargs)
   def unbind(*args, **kwargs): return torch.unbind(*args, **kwargs)
-  def sin(*args, **kwargs): return torch.sin(*args, **kwargs)
-  def cos(*args, **kwargs): return torch.cos(*args, **kwargs)
   def unsqueeze(self, dim): return Torchish(jnp.expand_dims(self.value, axis=dim))
-  def float(self): return Torchish(jnp.astype(self.value, jnp.float32))
-  def to(self, *args, **kwargs): return self  # ignore device movement, jax manages its own placement.
-  def contiguous(self): return self
   # fmt: on
 
   def view(self, *shape):
@@ -252,43 +257,20 @@ def auto_implements(torch_function, jax_function, dont_coerce_argnums=()):
 
 
 auto_implements(torch.abs, jnp.abs)
-auto_implements(torch.nan_to_num, jnp.nan_to_num)
 auto_implements(torch.add, jnp.add)
+auto_implements(torch.cos, jnp.cos)
 auto_implements(torch.exp, jnp.exp)
 auto_implements(torch.nn.functional.gelu, jax.nn.gelu)
 auto_implements(torch.mul, jnp.multiply)
+auto_implements(torch.nan_to_num, jnp.nan_to_num)
 auto_implements(torch.permute, jnp.transpose, dont_coerce_argnums=(1, 2))  # TODO: do we need argnum 2?
 auto_implements(torch.pow, jnp.power)
-auto_implements(torch.sin, jnp.sin)
-auto_implements(torch.cos, jnp.cos)
+auto_implements(torch.rsqrt, jax.lax.rsqrt)
 auto_implements(torch.sigmoid, jax.nn.sigmoid)
+auto_implements(torch.sin, jnp.sin)
 auto_implements(torch.sqrt, jnp.sqrt)
 auto_implements(torch.tanh, jnp.tanh)
 auto_implements(torch.transpose, jnp.swapaxes)
-auto_implements(torch.rsqrt, lambda x: jnp.reciprocal(jnp.sqrt(x)))
-
-
-@implements(torch.nn.functional.silu)
-def silu(x, *args, **kwargs):
-  x = _v(x)
-  if "inplace" in kwargs and kwargs["inplace"]:
-    assert not kwargs["inplace"], "jax doesn't support inplace"
-  return jax.nn.silu(x)
-
-
-@implements(torch.device, Torchishify_output=False)
-def torch_device(type):
-  return torch.device(type)
-
-
-@implements(torch.mean)
-def mean(tensor, dim=None, keepdim=False, dtype=None):
-  return jnp.mean(_v(tensor), axis=dim, keepdims=keepdim, dtype=t2j_dtype(dtype or tensor.dtype))
-
-
-@implements(torch.sum)
-def sum(tensor, dim=None, keepdim=False, dtype=None):
-  return jnp.sum(_v(tensor), axis=dim, keepdims=keepdim, dtype=t2j_dtype(dtype or tensor.dtype))
 
 
 @implements(torch._assert, Torchishify_output=False)
@@ -335,6 +317,13 @@ def cat(tensors, dim=0):
   return jnp.concatenate([_v(x) for x in tensors], axis=dim)
 
 
+@implements(torch.device, Torchishify_output=False)
+def device(type):
+  # device is not handled by __torch_function__ mechanism.
+  # therefore torch would like it as it is.
+  return torch.device(type)
+
+
 @implements(torch.empty)
 def empty(
   *args,
@@ -373,6 +362,11 @@ def multinomial(input, num_samples, replacement=False, generator=None, out=None)
     )(rngs, _v(input))
   else:
     raise ValueError(f"unsupported shape: {input.shape}")
+
+
+@implements(torch.mean)
+def mean(input, dim=None, keepdim=False, dtype=None):
+  return jnp.mean(_v(input), axis=dim, keepdims=keepdim, dtype=t2j_dtype(dtype or input.dtype))
 
 
 @implements(torch.normal)
@@ -518,6 +512,11 @@ def randperm(
 def sort(input, dim=-1, descending=False, stable=False, *, out=None):
   assert out is None, "TODO: implement `out`"
   return jnp.sort(_v(input), axis=dim, stable=stable, descending=descending)
+
+
+@implements(torch.sum)
+def sum(input, dim=None, keepdim=False, dtype=None):
+  return jnp.sum(_v(input), axis=dim, keepdims=keepdim, dtype=t2j_dtype(dtype or input.dtype))
 
 
 @implements(torch.tensor)
@@ -951,6 +950,16 @@ def relu(x, inplace=False):
     return x
   else:
     return Torchish(jax.nn.relu(_v(x)))
+
+
+@implements(torch.nn.functional.silu)
+def silu(x, inplace=False):
+  if inplace:
+    assert isinstance(x, Torchish)
+    x.value = jax.nn.silu(x.value)
+    return x
+  else:
+    return Torchish(jax.nn.silu(_v(x)))
 
 
 @implements(torch.nn.functional.prelu)
