@@ -354,8 +354,23 @@ def test_torch_nn_functional_scaled_dot_product_attention():
   t2j_function_test(lambda x, y: x @ y, [(2, 3, 5), (5, 7)], atol=1e-6)
 
   sdpa = torch.nn.functional.scaled_dot_product_attention
+
+  # default
   t2j_function_test(sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7)], atol=1e-6)
   t2j_function_test(sdpa, [(5, 7, 11), (5, 7, 11), (5, 7, 11)], atol=1e-6)
+
+  # default + attn_mask
+  t2j_function_test(sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7), (3, 2)], atol=1e-6)
+  t2j_function_test(sdpa, [(5, 7, 11), (5, 7, 11), (5, 7, 11), (7, 7)], atol=1e-6)
+
+  # causal=True
+  causal_sdpa = lambda *args: sdpa(*args, is_causal=True)
+  t2j_function_test(causal_sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7)], atol=1e-6)
+  t2j_function_test(causal_sdpa, [(5, 7, 11), (5, 7, 11), (5, 7, 11)], atol=1e-6)
+
+  # causal=True + attn_mask
+  t2j_function_test(causal_sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7), (3, 2)], atol=1e-6)
+  t2j_function_test(causal_sdpa, [(5, 7, 11), (5, 7, 11), (5, 7, 11), (7, 7)], atol=1e-6)
 
   E = 6
   num_heads = 2
