@@ -879,6 +879,40 @@ def dropout(input, p=0.5, training=True, inplace=False):
     return _v(input)
 
 
+@implements(torch.nn.functional.embedding)
+def embedding(input, weight, padding_idx=None, max_norm=None, norm_type=2.0, scale_grad_by_freq=False, sparse=False):
+  assert max_norm is None, "torch did an inplace set of weight, which is not possible for jax"
+  assert not sparse, "TODO: implement sparse"
+  input = _v(input)
+  weight = _v(weight)
+
+  if padding_idx is not None:
+    weight = weight.at[padding_idx].set(jax.lax.stop_gradient(weight[padding_idx]))
+
+  if scale_grad_by_freq:
+
+    @jax.custom_jvp
+    def f(weight):
+      return weight[input]
+
+    @f.defjvp
+    def f_jvp(primals, tangents):
+      w = primals[0]
+      w_dot = tangents[0]
+      primal_out = f(w)
+      size = min(w.shape[0], input.size)
+      indices, counts = jnp.unique_counts(input, size=size, fill_value=w.shape[0])
+      inv_freq = 1.0 / counts
+      slicing = (...,) + (None,) * (weight.ndim - 1)
+      inv_freq = inv_freq[slicing]
+      w_dot = w_dot.at[indices].multiply(inv_freq, indices_are_sorted=True, mode="drop")
+      return primal_out, w_dot[input]
+
+    return f(weight)
+
+  return weight[input]
+
+
 @implements(torch.nn.functional.layer_norm)
 def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-05):
   input = _v(input)
