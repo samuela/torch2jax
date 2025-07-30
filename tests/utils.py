@@ -43,12 +43,14 @@ def t2j_function_test(f, input_shapes, rng=random.PRNGKey(123), num_tests=5, **a
       # Branching is necessary to avoid `TypeError: iteration over a 0-d array` in the zip.
       if n_inputs > 1:
         argnums = tuple(range(n_inputs))
-        map(
-          lambda x, y: aac(x.squeeze(), y.squeeze(), **assert_kwargs),
-          zip(
-            grad(t2j(f_), argnums=argnums)(*inputs()),
-            torch.func.grad(f_, argnums=argnums)(*map(j2t, inputs())),
-          ),
+        list(
+          map(
+            lambda x: aac(x[0].squeeze(), x[1].squeeze(), **assert_kwargs),
+            zip(
+              grad(t2j(f_), argnums=argnums)(*inputs()),
+              torch.func.grad(f_, argnums=argnums)(*map(j2t, inputs())),
+            ),
+          )
         )
       else:
         [input] = inputs()
