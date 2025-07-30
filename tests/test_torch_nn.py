@@ -401,11 +401,25 @@ def test_torch_nn_functional_scaled_dot_product_attention():
     atol=1e-5,
   )
   # TODO test MHA without batch dimension
+
+
 def test_torch_nn_functional_embedding():
   samplers = [lambda key, shape: random.randint(key, shape=shape, minval=0, maxval=10), random.normal]
   embedding = lambda input, weight: torch.nn.functional.embedding(input, weight).mean()
   t2j_function_test(torch.nn.functional.embedding, [(5,), (10, 3)], grad_argnums=(1,), samplers=samplers, atol=1e-6)
-  t2j_function_test(torch.nn.functional.embedding, [(4, 5,), (10, 3)], grad_argnums=(1,), samplers=samplers, atol=1e-6)
+  t2j_function_test(
+    torch.nn.functional.embedding,
+    [
+      (
+        4,
+        5,
+      ),
+      (10, 3),
+    ],
+    grad_argnums=(1,),
+    samplers=samplers,
+    atol=1e-6,
+  )
 
   # test padding_idx
   embedding = lambda input, weight: torch.nn.functional.embedding(input, weight, padding_idx=0).mean()
