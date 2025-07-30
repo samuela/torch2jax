@@ -999,7 +999,12 @@ def scaled_dot_product_attention(query, key, value, attn_mask=None, dropout_p=0.
     else:
       raise ValueError(f"Unsupported attn_mask dtype: {attn_mask.dtype}. Expected bool or float.")
   output = jax.nn.dot_product_attention(Q, K, V, scale=scale, mask=mask, bias=bias, is_causal=is_causal)
-  return jnp.swapaxes(output, -2, -3)
+  output = jnp.swapaxes(output, -2, -3)
+  if mask is not None:
+    # (batch(optional), num_heads(optional), seq_len, 1)
+    output_mask = jnp.expand_dims(jnp.any(mask, axis=-1), axis=-1)
+    output *= output_mask
+  return output
 
 
 # NOTE: the "torch.Tensor" type annotations here are a lie, or at least an approximation: In reality, they can be
