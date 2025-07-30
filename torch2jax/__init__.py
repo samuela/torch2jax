@@ -96,10 +96,7 @@ class Torchish:
   # fmt: off
   @property
   def device(self):
-    try:  # Attempt to get the device from the value's device.
-      return torch.device(self.value.device.type.replace("gpu", "cuda"))
-    except Exception:  # otherwise, assume CPU, e.g. abstrace arrays, tpu arrays
-      return torch.device("cpu")
+    return torch.device("cpu")
 
   @property
   def dtype(self) -> torch.dtype: return j2t_dtype(self.value.dtype)
@@ -317,10 +314,12 @@ def cat(tensors, dim=0):
 
 
 @implements(torch.device, Torchishify_output=False)
-def device(type):
-  # device is not handled by __torch_function__ mechanism.
-  # therefore torch would like it as it is.
-  return torch.device(type)
+def device(device):
+  # device doesn't matter to jax at all, because jax has its own implicit device
+  # management, the user has no mechanism to do something like `to(device)`.
+  # Therefore, we always return a CPU device, which makes the torch side to be
+  # always consistent.
+  return torch.device("cpu")
 
 
 @implements(torch.empty)
