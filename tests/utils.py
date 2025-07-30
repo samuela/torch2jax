@@ -1,5 +1,3 @@
-from typing import Sequence
-
 import jax.numpy as jnp
 import numpy as np
 import torch
@@ -27,13 +25,12 @@ def test_t2j_array():
   aac(t2j(torch.eye(3).unsqueeze(0)), jnp.eye(3)[jnp.newaxis, ...])
 
 
-def t2j_function_test(f, input_shapes, samplers=random.normal, rng=random.PRNGKey(123), num_tests=5, **assert_kwargs):
+def t2j_function_test(f, input_shapes, samplers=None, rng=random.PRNGKey(123), num_tests=5, **assert_kwargs):
   for test_rng in random.split(rng, num_tests):
     # This is a thunk since methods like torch.nn.functional.batch_norm mutate the inputs and that affects subsequent
     # tests. We construct fresh values each time as a mitigation.
     n_inputs = len(input_shapes)
-    if not isinstance(samplers, Sequence):
-      samplers = [samplers] * n_inputs
+    samplers = [random.normal] * n_inputs if samplers is None else samplers
     inputs = lambda: [
       sampler(rng, shape=shape) for rng, shape, sampler in zip(random.split(test_rng, n_inputs), input_shapes, samplers)
     ]
