@@ -99,10 +99,18 @@ def test_oneliners():
   t2j_function_test(torch.add, [(3,), (3,)])
   t2j_function_test(torch.add, [(3, 1), (1, 3)])
   t2j_function_test(torch.mean, [(5,)], atol=1e-6)
+  t2j_function_test(lambda x: torch.mean(x, dim=1, keepdim=False), [(5, 6)], atol=1e-6)
+  t2j_function_test(lambda x: torch.mean(x, dim=1, keepdim=True), [(5, 6)], atol=1e-6)
   t2j_function_test(torch.sqrt, [(5,)])
+  t2j_function_test(torch.rsqrt, [(5,)])
   t2j_function_test(torch.sum, [(5,)], atol=1e-6)
+  t2j_function_test(lambda x: torch.sum(x, dim=1, keepdim=False), [(5, 6)], atol=1e-6)
+  t2j_function_test(lambda x: torch.sum(x, dim=1, keepdim=True), [(5, 6)], atol=1e-6)
   t2j_function_test(lambda x: 3 * x.sum(), [(5,)], atol=1e-6)
   t2j_function_test(lambda x: 3 * torch.sum(x), [(5,)], atol=1e-6)
+  t2j_function_test(torch.sin, [(3,)], atol=1e-6)
+  t2j_function_test(torch.cos, [(3,)], atol=1e-6)
+  t2j_function_test(lambda x: -x, [(3,)])
 
   # Seems like an innocent test, but this can cause segfaults when using dlpack in t2j_array
   t2j_function_test(lambda x: torch.tensor([3.0]) * torch.mean(x), [(5,)], atol=1e-6)
@@ -115,11 +123,25 @@ def test_oneliners():
   t2j_function_test(lambda x: x.T, [(2, 2)])
   t2j_function_test(lambda x: x.view(2, 2).T, [(2, 2)])
 
+  # view with list of ints
   t2j_function_test(lambda x: x.view(2, 2) @ x.view(2, 2), [(2, 2)], rtol=1e-6)
-  t2j_function_test(lambda x: x.view(2, 2) @ x.view(2, 2).T, [(2, 2)])
-  t2j_function_test(lambda x: x.view(2, 2) @ x.view(2, 2).T, [(4,)])
+  t2j_function_test(lambda x: x.view(2, 2) @ x.view(2, 2).T, [(2, 2)], rtol=1e-6)
+  t2j_function_test(lambda x: x.view(2, 2) @ x.view(2, 2).T, [(4,)], rtol=1e-6)
   t2j_function_test(lambda x: x.view(3, 4), [(12,)])
   t2j_function_test(lambda x: x.view(3, 4), [(4, 3)])
+
+  # view with tuple input
+  t2j_function_test(lambda x: x.view((2, 2)) @ x.view((2, 2)), [(2, 2)], rtol=1e-6)
+  t2j_function_test(lambda x: x.view((2, 2)) @ x.view((2, 2)).T, [(2, 2)], rtol=1e-6)
+  t2j_function_test(lambda x: x.view((2, 2)) @ x.view((2, 2)).T, [(4,)], rtol=1e-6)
+  t2j_function_test(lambda x: x.view((3, 4)), [(12,)])
+  t2j_function_test(lambda x: x.view((3, 4)), [(4, 3)])
+
+  t2j_function_test(lambda x: x.unsqueeze(0), [(4, 3)])
+  t2j_function_test(lambda x: x.unsqueeze(1), [(4, 3)])
+  t2j_function_test(lambda x: x.unsqueeze(2), [(4, 3)])
+
+  t2j_function_test(lambda x: x.T.contiguous(), [(4, 3)])
 
   t2j_function_test(lambda x: x.permute(1, 0), [(4, 3)])
   t2j_function_test(lambda x: x.permute(1, 0, 2), [(4, 3, 2)])
@@ -151,6 +173,7 @@ def test_oneliners():
   t2j_function_test(lambda x: x != x, [(3,)])
 
   t2j_function_test(torch.abs, [(3,)])
+  t2j_function_test(lambda x: (x > 0.0).float(), [(3,)])
 
 
 def test_Tensor():
