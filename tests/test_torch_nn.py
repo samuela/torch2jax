@@ -385,7 +385,7 @@ def test_torch_nn_functional_scaled_dot_product_attention():
   samplers = [random.normal] * 3 + [lambda rng, shape: jnp.zeros(shape, dtype=jnp.bool)]
   t2j_function_test(sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7), (3, 2)], samplers=samplers, atol=1e-6)
   t2j_function_test(sdpa, [(5, 7, 11), (5, 7, 11), (5, 7, 11), (7, 7)], samplers=samplers, atol=1e-6)
-  
+
   # causal=True
   causal_sdpa = lambda *args: sdpa(*args, is_causal=True)
   t2j_function_test(causal_sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7)], atol=1e-6)
