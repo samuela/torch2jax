@@ -382,7 +382,7 @@ def test_torch_nn_functional_scaled_dot_product_attention():
   t2j_function_test(sdpa, [(2, 5, 3, 7), (2, 5, 2, 7), (2, 5, 2, 7), (2, 5, 3, 2)], samplers=samplers, atol=1e-6)
 
   # attn_mask are all false
-  samplers = [random.normal] * 3 + [lambda rng, shape: jnp zeros(shape, dtype=jnp.bool)]
+  samplers = [random.normal] * 3 + [lambda rng, shape: jnp.zeros(shape, dtype=jnp.bool)]
   t2j_function_test(sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7), (3, 2)], samplers=samplers, atol=1e-6)
   t2j_function_test(sdpa, [(5, 7, 11), (5, 7, 11), (5, 7, 11), (7, 7)], samplers=samplers, atol=1e-6)
   
