@@ -1001,8 +1001,12 @@ def scaled_dot_product_attention(query, key, value, attn_mask=None, dropout_p=0.
   output = jax.nn.dot_product_attention(Q, K, V, scale=scale, mask=mask, bias=bias, is_causal=is_causal)
   output = jnp.swapaxes(output, -2, -3)
   if mask is not None:
-    # (batch(optional), num_heads(optional), seq_len, 1)
-    output_mask = jnp.expand_dims(jnp.any(mask, axis=-1), axis=-1)
+    # when attn_mask are all false in a row, torch returns 0.
+    # while jax simply adds large negative numbers to the logits
+    # leading to an uniform attention. Here's some post processing
+    # to align with torch behavior.
+    # shape of output mask: (batch(optional), num_heads(optional), seq_len, 1)
+    output_mask = jnp.any(mask, axis=-1, keepdims=True)
     output *= output_mask
   return output
 
