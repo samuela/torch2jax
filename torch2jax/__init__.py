@@ -1,6 +1,5 @@
 import copy
 import functools
-import math
 from contextlib import contextmanager
 from typing import Literal, Optional, Sequence, Tuple, Union
 
@@ -96,6 +95,10 @@ class Torchish:
 
   # fmt: off
   @property
+  def device(self):
+    return torch.device("cpu")
+
+  @property
   def dtype(self) -> torch.dtype: return j2t_dtype(self.value.dtype)
   @property
   def ndim(self) -> int: return len(self.value.shape)
@@ -137,6 +140,7 @@ class Torchish:
   def __ge__(self, other): return Torchish(self.value >= _coerce(other))
   def __matmul__(self, other): return Torchish(self.value @ _coerce(other))
   def __mul__(self, other): return Torchish(self.value * _coerce(other))
+  def __neg__(self): return Torchish(-self.value)
   def __pow__(self, other): return Torchish(self.value ** _coerce(other))
   def __radd__(self, other): return Torchish(_coerce(other) + self.value)
   def __rmatmul__(self, other): return Torchish(_coerce(other) @ self.value)
@@ -146,21 +150,32 @@ class Torchish:
 
   # For some reason `foo = torch.foo` doesn't work on these
   def clone(self): return Torchish(self.value.copy())
+  def contiguous(self): return self
+  def cos(*args, **kwargs): return torch.cos(*args, **kwargs)
   def detach(self): return Torchish(jax.lax.stop_gradient(self.value))
   def dim(self): return self.ndim
   def flatten(*args, **kwargs): return torch.flatten(*args, **kwargs)
+  def float(self): return Torchish(jnp.astype(self.value, jnp.float32))
   def item(self): return self.value.item()
   def mean(*args, **kwargs): return torch.mean(*args, **kwargs)
   def numel(self): return self.value.size
   def permute(self, *shape): return torch.permute(self, shape)
   def pow(*args, **kwargs): return torch.pow(*args, **kwargs)
+  def sin(*args, **kwargs): return torch.sin(*args, **kwargs)
   def size(self): return self.shape
   def sum(*args, **kwargs): return torch.sum(*args, **kwargs)
+  def to(self, *args, **kwargs): return self  # ignore device movement, jax manages its own placement.
   def transpose(*args, **kwargs): return torch.transpose(*args, **kwargs)
-  def view(self, *shape): return Torchish(jnp.reshape(self.value, shape))
-  reshape = view
   def unbind(*args, **kwargs): return torch.unbind(*args, **kwargs)
+  def unsqueeze(self, dim): return Torchish(jnp.expand_dims(self.value, axis=dim))
   # fmt: on
+
+  def view(self, *shape):
+    if len(shape) == 1 and isinstance(shape[0], Sequence):
+      shape = shape[0]
+    return Torchish(jnp.reshape(self.value, shape))
+
+  reshape = view
 
   def add_(self, other):
     self.value += other
@@ -238,17 +253,18 @@ def auto_implements(torch_function, jax_function, dont_coerce_argnums=()):
 
 
 auto_implements(torch.abs, jnp.abs)
-auto_implements(torch.nan_to_num, jnp.nan_to_num)
 auto_implements(torch.add, jnp.add)
+auto_implements(torch.cos, jnp.cos)
 auto_implements(torch.exp, jnp.exp)
 auto_implements(torch.nn.functional.gelu, jax.nn.gelu)
-auto_implements(torch.mean, jnp.mean)
 auto_implements(torch.mul, jnp.multiply)
+auto_implements(torch.nan_to_num, jnp.nan_to_num)
 auto_implements(torch.permute, jnp.transpose, dont_coerce_argnums=(1, 2))  # TODO: do we need argnum 2?
 auto_implements(torch.pow, jnp.power)
+auto_implements(torch.rsqrt, jax.lax.rsqrt)
 auto_implements(torch.sigmoid, jax.nn.sigmoid)
+auto_implements(torch.sin, jnp.sin)
 auto_implements(torch.sqrt, jnp.sqrt)
-auto_implements(torch.sum, jnp.sum)
 auto_implements(torch.tanh, jnp.tanh)
 auto_implements(torch.transpose, jnp.swapaxes)
 
@@ -297,6 +313,15 @@ def cat(tensors, dim=0):
   return jnp.concatenate([_v(x) for x in tensors], axis=dim)
 
 
+@implements(torch.device, Torchishify_output=False)
+def device(device):
+  # device doesn't matter to jax at all, because jax has its own implicit device
+  # management, the user has no mechanism to do something like `to(device)`.
+  # Therefore, we always return a CPU device, which makes the torch side to be
+  # always consistent.
+  return torch.device("cpu")
+
+
 @implements(torch.empty)
 def empty(
   *args,
@@ -335,6 +360,12 @@ def multinomial(input, num_samples, replacement=False, generator=None, out=None)
     )(rngs, _v(input))
   else:
     raise ValueError(f"unsupported shape: {input.shape}")
+
+
+@implements(torch.mean)
+def mean(input, dim=None, keepdim=False, dtype=None, out=None):
+  dtype = t2j_dtype(dtype) if dtype is not None else None
+  return jnp.mean(_v(input), axis=dim, keepdims=keepdim, dtype=dtype, out=out)
 
 
 @implements(torch.normal)
@@ -480,6 +511,12 @@ def randperm(
 def sort(input, dim=-1, descending=False, stable=False, *, out=None):
   assert out is None, "TODO: implement `out`"
   return jnp.sort(_v(input), axis=dim, stable=stable, descending=descending)
+
+
+@implements(torch.sum)
+def sum(input, dim=None, keepdim=False, dtype=None, out=None):
+  dtype = t2j_dtype(dtype) if dtype is not None else None
+  return jnp.sum(_v(input), axis=dim, keepdims=keepdim, dtype=dtype, out=out)
 
 
 @implements(torch.tensor)
@@ -915,6 +952,16 @@ def relu(x, inplace=False):
     return Torchish(jax.nn.relu(_v(x)))
 
 
+@implements(torch.nn.functional.silu, Torchishify_output=False)
+def silu(x, inplace=False):
+  if inplace:
+    assert isinstance(x, Torchish)
+    x.value = jax.nn.silu(x.value)
+    return x
+  else:
+    return Torchish(jax.nn.silu(_v(x)))
+
+
 @implements(torch.nn.functional.prelu)
 def prelu(input: Torchish, weight: Torchish):
   if weight.numel() != 1:
@@ -936,26 +983,32 @@ def prelu(input: Torchish, weight: Torchish):
 
 
 @implements(torch.nn.functional.scaled_dot_product_attention)
-def scaled_dot_product_attention(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False):
-  assert attn_mask is None, "TODO: implement attn_mask"
+def scaled_dot_product_attention(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None):
   assert dropout_p == 0.0, "TODO: implement dropout"
-  assert not is_causal, "TODO: implement is_causal"
-
-  # query is (N, ..., L, E)
-  # key, value are (N, ..., S, E)
-
   Q, K, V = _v(query), _v(key), _v(value)
-  # L = Q.shape[-2]
-  # S = K.shape[-2]
-
-  # From https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html
-  # attn_mask = jnp.tril(jnp.ones(L, S, dtype=jnp.bool)) if is_causal else attn_mask
-  # See https://github.com/pytorch/pytorch/issues/110341.
-  # attn_mask = attn_mask.masked_fill(not attn_mask, -float('inf')) if attn_mask.dtype == jnp.bool else attn_mask
-
-  attn_weight = jax.nn.softmax((Q @ jnp.swapaxes(K, -2, -1) / math.sqrt(Q.shape[-1])), axis=-1)
-  # attn_weight = torch.dropout(attn_weight, dropout_p)
-  return attn_weight @ V
+  # torch has (batch, num_heads, seq_len, head_dim) for Q, K, V
+  # jax has (batch, seq_len, num_heads, head_dim)
+  Q, K, V = jnp.swapaxes(Q, -2, -3), jnp.swapaxes(K, -2, -3), jnp.swapaxes(V, -2, -3)
+  mask, bias = None, None
+  if attn_mask is not None:
+    attn_mask = _v(attn_mask)
+    if jnp.issubdtype(attn_mask.dtype, jnp.bool_):
+      mask = attn_mask
+    elif jnp.issubdtype(attn_mask.dtype, jnp.floating):
+      bias = attn_mask
+    else:
+      raise ValueError(f"Unsupported attn_mask dtype: {attn_mask.dtype}. Expected bool or float.")
+  output = jax.nn.dot_product_attention(Q, K, V, scale=scale, mask=mask, bias=bias, is_causal=is_causal)
+  output = jnp.swapaxes(output, -2, -3)
+  if mask is not None:
+    # when attn_mask are all false in a row, torch returns 0.
+    # while jax simply adds large negative numbers to the logits
+    # leading to an uniform attention. Here's some post processing
+    # to align with torch behavior.
+    # shape of output mask: (batch(optional), num_heads(optional), seq_len, 1)
+    output_mask = jnp.any(mask, axis=-1, keepdims=True)
+    output *= output_mask
+  return output
 
 
 # NOTE: the "torch.Tensor" type annotations here are a lie, or at least an approximation: In reality, they can be

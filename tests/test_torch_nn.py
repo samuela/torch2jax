@@ -350,12 +350,46 @@ def test_torch_nn_functional_prelu():
   t2j_function_test(torch.nn.functional.prelu, [(5, 3, 112, 122), (3,)], atol=1e-6)
 
 
+def test_torch_nn_functional_silu():
+  t2j_function_test(torch.nn.functional.silu, [(6, 6)], atol=1e-6)
+  t2j_function_test(torch.nn.functional.silu, [(5, 3, 112, 122)], atol=1e-6)
+
+
 def test_torch_nn_functional_scaled_dot_product_attention():
   t2j_function_test(lambda x, y: x @ y, [(2, 3, 5), (5, 7)], atol=1e-6)
 
   sdpa = torch.nn.functional.scaled_dot_product_attention
+
+  # default
   t2j_function_test(sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7)], atol=1e-6)
   t2j_function_test(sdpa, [(5, 7, 11), (5, 7, 11), (5, 7, 11)], atol=1e-6)
+
+  # default + attn_mask(float)
+  t2j_function_test(sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7), (3, 2)], atol=1e-6)
+  t2j_function_test(sdpa, [(5, 7, 11), (5, 7, 11), (5, 7, 11), (7, 7)], atol=1e-6)
+
+  # default + attn_mask(bool)
+  samplers = [random.normal] * 3 + [random.bernoulli]
+  t2j_function_test(sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7), (3, 2)], samplers=samplers, atol=1e-6)
+  t2j_function_test(sdpa, [(5, 7, 11), (5, 7, 11), (5, 7, 11), (7, 7)], samplers=samplers, atol=1e-6)
+
+  # test with different shapes
+  t2j_function_test(sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7), (1, 3, 2)], samplers=samplers, atol=1e-6)
+  t2j_function_test(sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7), (5, 3, 2)], samplers=samplers, atol=1e-6)
+  t2j_function_test(sdpa, [(2, 5, 3, 7), (2, 5, 2, 7), (2, 5, 2, 7), (1, 3, 2)], samplers=samplers, atol=1e-6)
+  t2j_function_test(sdpa, [(2, 5, 3, 7), (2, 5, 2, 7), (2, 5, 2, 7), (5, 3, 2)], samplers=samplers, atol=1e-6)
+  t2j_function_test(sdpa, [(2, 5, 3, 7), (2, 5, 2, 7), (2, 5, 2, 7), (2, 1, 3, 2)], samplers=samplers, atol=1e-6)
+  t2j_function_test(sdpa, [(2, 5, 3, 7), (2, 5, 2, 7), (2, 5, 2, 7), (2, 5, 3, 2)], samplers=samplers, atol=1e-6)
+
+  # attn_mask are all false
+  samplers = [random.normal] * 3 + [lambda rng, shape: jnp.zeros(shape, dtype=jnp.bool)]
+  t2j_function_test(sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7), (3, 2)], samplers=samplers, atol=1e-6)
+  t2j_function_test(sdpa, [(5, 7, 11), (5, 7, 11), (5, 7, 11), (7, 7)], samplers=samplers, atol=1e-6)
+
+  # causal=True
+  causal_sdpa = lambda *args: sdpa(*args, is_causal=True)
+  t2j_function_test(causal_sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7)], atol=1e-6)
+  t2j_function_test(causal_sdpa, [(5, 7, 11), (5, 7, 11), (5, 7, 11)], atol=1e-6)
 
   E = 6
   num_heads = 2
