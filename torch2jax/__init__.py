@@ -1187,12 +1187,26 @@ def t2j_module(module):
     # Can't use torch.func.functional_call due to https://github.com/pytorch/pytorch/issues/110249
     assert state_dict.keys() == dict(m.state_dict()).keys()
 
-    def visit(m, prefix):
-      for name, _ in m.named_parameters(recurse=False):
-        m._parameters[name] = Torchish(state_dict[".".join(prefix + [name])])
+    reverse_dict = {}
 
-      for name, _ in m.named_buffers(recurse=False):
-        m._buffers[name] = Torchish(state_dict[".".join(prefix + [name])])
+    def visit(m, prefix):
+      for name, param in m.named_parameters(recurse=False):
+        if param in reverse_dict:
+          # sometimes parameters are shared,
+          # e.g. llm head shares embedding weights
+          # we won't be able to get "llm.head" in the state_dict in this case.
+          # because the underlying parameter is only registered once as "embedding.weight".
+          m._parameters[name] = Torchish(state_dict[reverse_dict[param]])
+        else:
+          m._parameters[name] = Torchish(state_dict[".".join(prefix + [name])])
+          reverse_dict[param] = ".".join(prefix + [name])
+
+      for name, buffer in m.named_buffers(recurse=False):
+        # buffers with register_buffer(persistent=False) won't appear in state_dict
+        if ".".join(prefix + [name]) not in module.state_dict().keys():
+          m._buffers[name] = Torchish(t2j(buffer))
+        else:
+          m._buffers[name] = Torchish(state_dict[".".join(prefix + [name])])
 
       # NOTE: named_children() is the non-recursive version of named_modules()
       for name, child in m.named_children():
