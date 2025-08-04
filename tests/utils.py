@@ -47,7 +47,7 @@ def t2j_function_test(
 
       # Branching is necessary to avoid `TypeError: iteration over a 0-d array` in the zip.
       if n_inputs > 1:
-        argnums = tuple(range(n_inputs))
+        argnums = grad_argnums if grad_argnums is not None else tuple(range(n_inputs))
         for t2j_grad, torch_grad in zip(
           grad(t2j(f_), argnums=argnums)(*inputs()), torch.func.grad(f_, argnums=argnums)(*map(j2t, inputs()))
         ):
