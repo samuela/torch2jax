@@ -25,7 +25,9 @@ def test_t2j_array():
   aac(t2j(torch.eye(3).unsqueeze(0)), jnp.eye(3)[jnp.newaxis, ...])
 
 
-def t2j_function_test(f, input_shapes, samplers=None, rng=random.PRNGKey(123), num_tests=5, **assert_kwargs):
+def t2j_function_test(
+  f, input_shapes, samplers=None, rng=random.PRNGKey(123), grad_argnums=None, num_tests=5, **assert_kwargs
+):
   for test_rng in random.split(rng, num_tests):
     # This is a thunk since methods like torch.nn.functional.batch_norm mutate the inputs and that affects subsequent
     # tests. We construct fresh values each time as a mitigation.
@@ -45,7 +47,7 @@ def t2j_function_test(f, input_shapes, samplers=None, rng=random.PRNGKey(123), n
 
       # Branching is necessary to avoid `TypeError: iteration over a 0-d array` in the zip.
       if n_inputs > 1:
-        argnums = tuple(range(n_inputs))
+        argnums = grad_argnums if grad_argnums is not None else tuple(range(n_inputs))
         for t2j_grad, torch_grad in zip(
           grad(t2j(f_), argnums=argnums)(*inputs()), torch.func.grad(f_, argnums=argnums)(*map(j2t, inputs()))
         ):
