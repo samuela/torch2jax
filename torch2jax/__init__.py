@@ -881,7 +881,7 @@ def dropout(input, p=0.5, training=True, inplace=False):
 
 @implements(torch.nn.functional.embedding)
 def embedding(input, weight, padding_idx=None, max_norm=None, norm_type=2.0, scale_grad_by_freq=False, sparse=False):
-  assert max_norm is None, "torch did an inplace set of weight, which is not possible for jax"
+  assert max_norm is None, "TODO: implement max_norm"
   assert not sparse, "TODO: implement sparse"
   input = _v(input)
   weight = _v(weight)
