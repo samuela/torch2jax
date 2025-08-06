@@ -903,7 +903,7 @@ def embedding(input, weight, padding_idx=None, max_norm=None, norm_type=2.0, sca
       size = min(w.shape[0], input.size)
       indices, counts = jnp.unique_counts(input, size=size, fill_value=w.shape[0])
       inv_freq = 1.0 / counts
-      slicing = (...,) + (None,) * (weight.ndim - 1)
+      slicing = (...,) + (jnp.newaxis,) * (weight.ndim - 1)
       inv_freq = inv_freq[slicing]
       w_dot = w_dot.at[indices].multiply(inv_freq, indices_are_sorted=True, mode="drop")
       return primal_out, w_dot[input]
