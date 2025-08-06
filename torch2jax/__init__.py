@@ -905,7 +905,7 @@ def embedding(input, weight, padding_idx=None, max_norm=None, norm_type=2.0, sca
       inv_freq = 1.0 / counts
       slicing = (...,) + (jnp.newaxis,) * (weight.ndim - 1)
       inv_freq = inv_freq[slicing]
-      w_dot = w_dot.at[indices].multiply(inv_freq, indices_are_sorted=True, mode="drop")
+      w_dot = w_dot.at[indices].multiply(inv_freq, mode="drop")
       return primal_out, w_dot[input]
 
     return f(weight)
