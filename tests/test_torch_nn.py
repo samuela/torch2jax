@@ -409,13 +409,7 @@ def test_torch_nn_functional_embedding():
   t2j_function_test(torch.nn.functional.embedding, [(5,), (10, 3)], grad_argnums=(1,), samplers=samplers, atol=1e-6)
   t2j_function_test(
     torch.nn.functional.embedding,
-    [
-      (
-        4,
-        5,
-      ),
-      (10, 3),
-    ],
+    [(4, 5), (10, 3)],
     grad_argnums=(1,),
     samplers=samplers,
     atol=1e-6,
