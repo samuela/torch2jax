@@ -283,7 +283,6 @@ def _assert(condition, message):
 
 @implements(torch.arange, out_kwarg=True)
 def arange(*args, **kwargs):
-  assert kwargs.get("out", None) is None, "TODO: implement `out`"
   dtype = t2j_dtype(
     kwargs.get(
       "dtype",
