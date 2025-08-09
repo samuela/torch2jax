@@ -223,8 +223,8 @@ def implements(torch_function, Torchishify_output=True, out_kwarg=False, Torchis
   def decorator(func):
     if out_kwarg:
 
-      def func1(*args, **kwargs):
-        if out := kwargs.pop("out", None):
+      def func1(*args, out=None, **kwargs):
+        if out is not None:
           out.value = func(*args, **kwargs)
           return out
         else:
