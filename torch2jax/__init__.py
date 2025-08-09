@@ -211,14 +211,9 @@ def _args_to_shape(args):
 
 def implements(torch_function, Torchishify_output=True, out_kwarg=False, Torchish_member=False):
   """Register a torch function override"""
-  if out_kwarg:
-    # adding out kwarg will by default Torchishify the output, so we don't need to Torchishify the output again.
-    Torchishify_output = False
 
   def decorator(func):
-    if Torchishify_output:
-      func1 = lambda *args, **kwargs: Torchish(func(*args, **kwargs))
-    elif out_kwarg:
+    if out_kwarg:
 
       def func1(*args, **kwargs):
         if out := kwargs.pop("out", None):
@@ -226,6 +221,8 @@ def implements(torch_function, Torchishify_output=True, out_kwarg=False, Torchis
           return out
         else:
           return Torchish(func(*args, **kwargs))
+    elif Torchishify_output:
+      func1 = lambda *args, **kwargs: Torchish(func(*args, **kwargs))
     else:
       func1 = func
     functools.update_wrapper(func1, torch_function)
