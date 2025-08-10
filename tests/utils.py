@@ -1,3 +1,4 @@
+import jax
 import jax.numpy as jnp
 import numpy as np
 import torch
@@ -5,7 +6,10 @@ from jax import grad, jit, random
 
 from torch2jax import j2t, t2j
 
-aac = np.testing.assert_allclose
+
+def aac(tree_a, tree_b, **kwargs):
+  for a, b in zip(jax.tree_util.tree_flatten(tree_a)[0], jax.tree_util.tree_flatten(tree_b)[0]):
+    np.testing.assert_allclose(a, b, **kwargs)
 
 
 def anac(*args, **kwargs):
