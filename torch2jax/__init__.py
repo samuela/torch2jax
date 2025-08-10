@@ -320,7 +320,7 @@ def bernoulli(input, generator=None):
   return jax.random.bernoulli(mk_rng(), p=_v(input))
 
 
-@implements(torch.cat)
+@implements(torch.cat, out_kwarg=True)
 def cat(tensors, dim=0):
   return jnp.concatenate([_v(x) for x in tensors], axis=dim)
 
@@ -371,7 +371,7 @@ def multinomial(input, num_samples, replacement=False, generator=None):
     raise ValueError(f"unsupported shape: {input.shape}")
 
 
-@implements(torch.mean, out_kwarg=True, Torchish_member=True)
+@implements(torch.mean, Torchish_member=True)
 def mean(input, dim=None, keepdim=False, dtype=None):
   dtype = t2j_dtype(dtype) if dtype is not None else None
   return jnp.mean(_v(input), axis=dim, keepdims=keepdim, dtype=dtype)
@@ -522,7 +522,7 @@ def sort(input, dim=-1, descending=False, stable=False):
   return jnp.sort(_v(input), axis=dim, stable=stable, descending=descending)
 
 
-@implements(torch.sum, out_kwarg=True, Torchish_member=True)
+@implements(torch.sum, Torchish_member=True)
 def sum(input, dim=None, keepdim=False, dtype=None):
   dtype = t2j_dtype(dtype) if dtype is not None else None
   return jnp.sum(_v(input), axis=dim, keepdims=keepdim, dtype=dtype)
@@ -1009,7 +1009,7 @@ def silu(x, inplace=False):
     return Torchish(jax.nn.silu(_v(x)))
 
 
-@implements(torch.nn.functional.prelu)
+@implements(torch.nn.functional.prelu, Torchish_member=True)
 def prelu(input: Torchish, weight: Torchish):
   if weight.numel() != 1:
     assert input.ndim > 0, "Not allow zero-dim input tensor."
