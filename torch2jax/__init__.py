@@ -1161,7 +1161,8 @@ def t2j_function(f):
       with RngPooperContext(None if rng is None else RngPooper(rng)):
         with TorchishMode():
           out = f(*torch_args)
-    return out.value
+    # use the torch's tree_map, because out is generated from torch code
+    return torch.utils._pytree.tree_map(lambda x: x.value if isinstance(x, Torchish) else x, out)
 
   return f_jax
 
