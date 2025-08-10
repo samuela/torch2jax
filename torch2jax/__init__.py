@@ -76,6 +76,7 @@ def j2t_array(jax_array):
 
 
 HANDLED_FUNCTIONS = {}
+FUNCTIONS_WITH_OUT_KWARG = {}
 
 
 class Torchish:
@@ -215,6 +216,8 @@ def implements(torch_function, Torchishify_output=True, out_kwarg=False, Torchis
           return out
         else:
           return Torchish(func(*args, **kwargs))
+
+      FUNCTIONS_WITH_OUT_KWARG[torch_function] = func1
     elif Torchishify_output:
       func1 = lambda *args, **kwargs: Torchish(func(*args, **kwargs))
     else:
