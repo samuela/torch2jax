@@ -151,15 +151,21 @@ def test_oneliners():
   # topk: TODO, out is a tuple
 
   # scatter
-  samplers = [random.normal,
-              lambda key, shape: jnp.array([[0, 1, 2, 0, 2], [1, 0, 0, 2, 1]]),
-              random.normal]
+  index = jnp.array([[0, 1, 2, 0, 2], [1, 0, 0, 2, 1]])
+  samplers = [random.normal, lambda key, shape: index, random.normal]
   t2j_function_test(lambda input, index, src: torch.scatter(input, 0, index, src), [(3, 5), (2, 5), (2, 5)], samplers=samplers, atol=1e-6)
-  # samplers = [random.normal,
-  #             lambda key, shape: jnp.array([[4, 2, 3], [3, 0, 4], [1, 3, 2]]),
-  #             random.normal]
-  # t2j_function_test(lambda input, index, src: torch.scatter(input, 1, index, src), [(3, 5), (3, 5), (3, 5)], samplers=samplers, atol=1e-6)
-
+  index = jnp.array([[0, 1, 2, 0, 2]])
+  samplers = [random.normal, lambda key, shape: index, random.normal]
+  t2j_function_test(lambda input, index, src: torch.scatter(input, 0, index, src), [(3, 5), (1, 5), (2, 5)], samplers=samplers, atol=1e-6)
+  index = jnp.array([[0, 1, 2, 0]])
+  samplers = [random.normal, lambda key, shape: index, random.normal]
+  t2j_function_test(lambda input, index, src: torch.scatter(input, 0, index, src), [(3, 5), (1, 4), (2, 5)], samplers=samplers, atol=1e-6)
+  index = jnp.array([[4, 2, 3], [3, 0, 4]])
+  samplers = [random.normal, lambda key, shape: index, random.normal]
+  t2j_function_test(lambda input, index, src: torch.scatter(input, 1, index, src), [(3, 5), (2, 3), (3, 5)], samplers=samplers, atol=1e-6)
+  index = jnp.array([[4, 2, 3], [3, 0, 4], [0, 1, 2]])
+  samplers = [random.normal, lambda key, shape: index, random.normal]
+  t2j_function_test(lambda input, index, src: torch.scatter(input, 1, index, src), [(3, 5), (3, 3), (3, 5)], samplers=samplers, atol=1e-6)
 
   t2j_function_test(lambda x: torch.pow(x, 2), [()])
   t2j_function_test(lambda x: torch.pow(x, 2), [(3,)])

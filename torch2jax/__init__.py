@@ -606,6 +606,11 @@ def randperm(
   return jax.random.permutation(mk_rng(), n).astype(dtype or torch.int64)
 
 def scatter_impl(input, dim, index, src, *, reduce=None):
+  # in jax the dims other than dim for index & src should be equal,
+  # but torch allows index to be smaller, we pad it with a out-of-bound index to match the src.
+  out_of_range_idx = input.shape[dim]
+  padding = tuple((0, d2 - d1) for d1, d2 in zip(index.shape, src.shape))
+  index = jnp.pad(index, padding, constant_values=out_of_range_idx)
   dnums = jax.lax.ScatterDimensionNumbers(update_window_dims=(), inserted_window_dims=(0,), scatter_dims_to_operand_dims=(0,))
   if reduce is None:
     _scatter = jax.lax.scatter
@@ -614,7 +619,7 @@ def scatter_impl(input, dim, index, src, *, reduce=None):
   elif reduce == "multiply":
     _scatter = jax.lax.scatter_mul
 
-  _scatter = partial(_scatter, dimension_numbers=dnums)
+  _scatter = partial(_scatter, dimension_numbers=dnums, mode="drop")
   vmap_inner = partial(jax.vmap, in_axes=(0, 0, 0), out_axes=0)
 
   for _ in range(len(input.shape)-1):
