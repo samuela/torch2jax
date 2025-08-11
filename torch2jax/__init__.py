@@ -41,6 +41,9 @@ def RngPooperContext(value: RngPooper | None):
     _RNG_POOPER_STACK.pop()
 
 
+_GRAD_ENABLED = True
+
+
 def t2j_array(torch_array):
   # NOTE: We are resorting to the copying, non-dlpack implementation until https://github.com/jax-ml/jax/issues/25066 is
   # resolved. Unfortunate but necessary.
@@ -84,6 +87,9 @@ class Torchish:
     assert isinstance(value, jnp.ndarray) or isinstance(value, int) or isinstance(value, float), (
       f"Tried to create Torchish with unsupported type: {type(value)}"
     )
+    global _GRAD_ENABLED
+    if not _GRAD_ENABLED:
+      value = jax.lax.stop_gradient(value)
     self.value = value
 
   # In order for PyTorch to accept an object as one of its own and allow dynamic dispatch it must either subclass
@@ -511,6 +517,12 @@ def randperm(
   assert generator is None, "TODO: implement `generator`"
   assert out is None, "TODO: implement `out`"
   return jax.random.permutation(mk_rng(), n).astype(dtype or torch.int64)
+
+
+@implements(torch._C._set_grad_enabled, Torchishify_output=False)
+def set_grad_enabled(mode):
+  global _GRAD_ENABLED
+  _GRAD_ENABLED = mode
 
 
 @implements(torch.sort)
