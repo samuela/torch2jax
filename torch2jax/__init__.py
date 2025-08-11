@@ -1,16 +1,16 @@
 import copy
 import functools
-from functools import partial
 from collections import namedtuple
 from contextlib import contextmanager
+from functools import partial
 from typing import Literal, Optional, Sequence, Tuple, Union
 
 import jax
 import jax.dlpack
 import jax.numpy as jnp
 import torch
-from torch.utils._pytree import tree_map
 from torch.overrides import TorchFunctionMode, resolve_name
+from torch.utils._pytree import tree_map
 
 
 class RngPooper:
@@ -216,8 +216,10 @@ def _v(x):
   assert isinstance(x, Torchish)
   return x.value
 
+
 def _tree_v(t):
   return tree_map(lambda x: x.value if isinstance(x, Torchish) else x, t)
+
 
 def _args_to_shape(args):
   assert len(args) >= 1
@@ -236,8 +238,10 @@ def implements(torch_function, Torchishify_output=True, out_kwarg=False, Torchis
           if isinstance(out, Torchish):
             out.value = ret
           else:
+
             def assign_value(out, value):
               out.value = value
+
             tree_map(assign_value, out, ret)
           return out
         else:
@@ -301,6 +305,7 @@ auto_implements(torch.transpose, jnp.swapaxes, Torchish_member=True)
 @implements(torch.all, out_kwarg=True, Torchish_member=True)
 def all(input, dim=None, keepdim=False):
   return jnp.all(_v(input), axis=dim, keepdims=keepdim)
+
 
 @implements(torch.any, out_kwarg=True, Torchish_member=True)
 def any(input, dim=None, keepdim=False):
@@ -388,6 +393,7 @@ def flatten(input, start_dim=0, end_dim=-1):
   assert end_dim == -1, "TODO: implement end_dim"
   return jnp.reshape(_v(input), input.shape[:start_dim] + (-1,))
 
+
 @implements(torch.full, Torchishify_output=False)
 def full(size, fill_value, *, out=None, dtype=None, layout=torch.strided, device=None, requires_grad=False):
   assert not requires_grad
@@ -401,35 +407,43 @@ def full(size, fill_value, *, out=None, dtype=None, layout=torch.strided, device
   else:
     return Torchish(jax_out)
 
+
 @implements(torch.isin)
 def isin(elements, test_elements, *, assume_unique=False, invert=False):
   return jnp.isin(_v(elements), _v(test_elements), assume_unique, invert)
+
 
 @implements(torch.is_floating_point, Torchishify_output=False, Torchish_member=True)
 def is_floating_point(input):
   return jnp.issubdtype(_v(input).dtype, jnp.floating)
 
+
 @implements(torch.logical_and, out_kwarg=True, Torchish_member=True)
 def logical_and(input, other):
   return jnp.logical_and(_v(input), _v(other))
+
 
 @implements(torch.logical_or, out_kwarg=True, Torchish_member=True)
 def logical_or(input, other):
   return jnp.logical_or(_v(input), _v(other))
 
+
 @implements(torch.logical_not, out_kwarg=True, Torchish_member=True)
 def logical_not(input):
   return jnp.logical_not(_v(input))
 
+
 @implements(torch.logical_xor, out_kwarg=True, Torchish_member=True)
 def logical_xor(input, other):
   return jnp.logical_xor(_v(input), _v(other))
+
 
 @implements(torch.masked_fill, Torchish_member=True)
 def masked_fill(self, mask, value):
   mask, value = _v(mask), _coerce(value)
   value = jnp.broadcast_to(value, self.value.shape)
   return jnp.where(mask, value, self.value)
+
 
 @implements(torch.max, out_kwarg=True, Torchish_member=True)
 def max(input, dim=None, keepdim=False):
@@ -442,6 +456,7 @@ def max(input, dim=None, keepdim=False):
   else:
     indices = jnp.squeeze(indices, axis=dim)
   return namedtuple("torch_max_output", "values,indices")(values, indices)
+
 
 @implements(torch.mean, out_kwarg=True, Torchish_member=True)
 def mean(input, dim=None, keepdim=False, dtype=None):
@@ -470,6 +485,7 @@ def multinomial(input, num_samples, replacement=False, generator=None):
 @implements(torch.ne, out_kwarg=True, Torchish_member=True)
 def ne(input, other):
   return jnp.not_equal(_v(input), _coerce(other))
+
 
 @implements(torch.normal, out_kwarg=True)
 def normal(*args, **kwargs):
@@ -605,13 +621,16 @@ def randperm(
   assert generator is None, "TODO: implement `generator`"
   return jax.random.permutation(mk_rng(), n).astype(dtype or torch.int64)
 
+
 def scatter_impl(input, dim, index, src, *, reduce=None):
   # in jax the dims other than dim for index & src should be equal,
   # but torch allows index to be smaller, we pad it with a out-of-bound index to match the src.
   out_of_range_idx = input.shape[dim]
   padding = tuple((0, d2 - d1) for d1, d2 in zip(index.shape, src.shape))
   index = jnp.pad(index, padding, constant_values=out_of_range_idx)
-  dnums = jax.lax.ScatterDimensionNumbers(update_window_dims=(), inserted_window_dims=(0,), scatter_dims_to_operand_dims=(0,))
+  dnums = jax.lax.ScatterDimensionNumbers(
+    update_window_dims=(), inserted_window_dims=(0,), scatter_dims_to_operand_dims=(0,)
+  )
   if reduce is None:
     _scatter = jax.lax.scatter
   elif reduce == "add":
@@ -622,19 +641,22 @@ def scatter_impl(input, dim, index, src, *, reduce=None):
   _scatter = partial(_scatter, dimension_numbers=dnums, mode="drop")
   vmap_inner = partial(jax.vmap, in_axes=(0, 0, 0), out_axes=0)
 
-  for _ in range(len(input.shape)-1):
+  for _ in range(len(input.shape) - 1):
     _scatter = vmap_inner(_scatter)
   swap = lambda x: jnp.swapaxes(x, dim, -1)
   input, index, src = list(map(swap, (input, index, src)))
   return swap(_scatter(input, jnp.expand_dims(index, axis=-1), src))
 
+
 @implements(torch.scatter, Torchish_member=True)
 def scatter(input, dim, index, src):
   return scatter_impl(_v(input), dim, _v(index), _v(src), reduce=None)
 
+
 @implements(torch.scatter_add, Torchish_member=True)
 def scatter_add(input, dim, index, src):
   return scatter_impl(_v(input), dim, _v(index), _v(src), reduce="add")
+
 
 @implements(torch.softmax, Torchish_member=True)
 def softmax(input, dim, *, dtype=None):
@@ -643,6 +665,7 @@ def softmax(input, dim, *, dtype=None):
     output = jnp.astype(output, t2j_dtype(dtype))
   return output
 
+
 @implements(torch.sort, out_kwarg=True, Torchishify_output=False)
 def sort(input, dim=-1, descending=False, stable=False):
   input = _v(input)
@@ -650,9 +673,11 @@ def sort(input, dim=-1, descending=False, stable=False):
   sorted_values = jnp.take_along_axis(input, sorted_indices, axis=dim)
   return namedtuple("torch_sort_output", "values,indices")(Torchish(sorted_values), Torchish(sorted_indices))
 
+
 @implements(torch.squeeze, Torchish_member=True)
 def squeeze(input, dim=None):
   return jnp.squeeze(_v(input), axis=dim)
+
 
 @implements(torch.sum, Torchish_member=True)
 def sum(input, dim=None, keepdim=False, dtype=None):
@@ -667,12 +692,13 @@ def tensor(data, dtype=None, device=None, requires_grad=False, pin_memory=False)
     data.value if isinstance(data, Torchish) else data, dtype=t2j_dtype(dtype or torch.get_default_dtype())
   )
 
+
 @implements(torch.topk, Torchishify_output=False)
 def topk(input, k, dim=None, largest=True, sorted=True, *, out=None):
   assert out is None, "TODO: implement `out`"
   input = _v(input)
   dim = dim if dim is not None else -1
-  if dim != -1 and dim != input.ndim -1:
+  if dim != -1 and dim != input.ndim - 1:
     input = jnp.swapaxes(input, dim, -1)
 
   if largest:
@@ -686,11 +712,12 @@ def topk(input, k, dim=None, largest=True, sorted=True, *, out=None):
     values = jnp.take_along_axis(values, sort_indices, axis=-1)
     indices = jnp.take_along_axis(indices, sort_indices, axis=-1)
 
-  if dim != -1 and dim != input.ndim -1:
+  if dim != -1 and dim != input.ndim - 1:
     values = jnp.swapaxes(values, dim, -1)
     indices = jnp.swapaxes(indices, dim, -1)
 
   return namedtuple("torch_topk_output", "values,indices")(Torchish(values), Torchish(indices))
+
 
 @implements(torch.unbind, Torchishify_output=False, Torchish_member=True)
 def unbind(input, dim=0) -> Sequence[Torchish]:
@@ -1145,14 +1172,15 @@ def max_pool2d(input, kernel_size, stride=None, padding=0, dilation=1, ceil_mode
 
 
 @implements(torch.nn.functional.relu, Torchishify_output=False, Torchish_member=True)
-def relu(x, inplace=False):
+def relu(input, inplace=False):
   # Can't use `auto_implements` since jax.nn.relu does not have an `inplace` option.
   if inplace:
-    assert isinstance(x, Torchish)
-    x.value = jax.nn.relu(x.value)
-    return x
+    assert isinstance(input, Torchish)
+    input.value = jax.nn.relu(input.value)
+    return input
   else:
-    return Torchish(jax.nn.relu(_v(x)))
+    return Torchish(jax.nn.relu(_v(input)))
+
 
 @implements(torch.nn.functional.relu6, Torchishify_output=False)
 def relu6(input, inplace=False):
@@ -1163,23 +1191,27 @@ def relu6(input, inplace=False):
   else:
     return Torchish(jax.nn.relu6(_v(input)))
 
+
 @implements(torch.nn.functional.silu, Torchishify_output=False)
-def silu(x, inplace=False):
+def silu(input, inplace=False):
   if inplace:
-    assert isinstance(x, Torchish)
-    x.value = jax.nn.silu(x.value)
-    return x
+    assert isinstance(input, Torchish)
+    input.value = jax.nn.silu(input.value)
+    return input
   else:
-    return Torchish(jax.nn.silu(_v(x)))
+    return Torchish(jax.nn.silu(_v(input)))
+
 
 @implements(torch.nn.functional.softmax)
 def nn_functional_softmax(input, dim=None, _stacklevel=3, dtype=None):
   # this function has already been implemented in `torch.softmax`
   return softmax(input, dim, dtype)
 
+
 @implements(torch.nn.functional.softmin)
 def softmin(input, dim=None, _stacklevel=3, dtype=None):
   return jax.nn.softmax(-_v(input), axis=dim, dtype=t2j_dtype(dtype))
+
 
 @implements(torch.nn.functional.softplus)
 def softplus(input, beta=1, threshold=20):
@@ -1187,11 +1219,12 @@ def softplus(input, beta=1, threshold=20):
   value = jax.nn.softplus(input * beta) / beta
   return jnp.where(input > threshold, input, value)
 
+
 @implements(torch.nn.functional.softshrink)
 def softshrink(input, lambd=0.5):
   input = _v(input)
-  return jnp.where(input > lambd, input - lambd,
-                   jnp.where(input < -lambd, input + lambd, 0))
+  return jnp.where(input > lambd, input - lambd, jnp.where(input < -lambd, input + lambd, 0))
+
 
 @implements(torch.nn.functional.softsign)
 def softsign(input):
@@ -1201,16 +1234,17 @@ def softsign(input):
 @implements(torch.nn.functional.tanh, Torchishify_output=False)
 def tanh(input, inplace=False):
   if inplace:
-    assert isinstance(x, Torchish)
-    x.value = jnp.tanh(x.value)
-    return x
+    assert isinstance(input, Torchish)
+    input.value = jnp.tanh(input.value)
+    return input
   else:
-    return Torchish(jnp.tanh(_v(x)))
+    return Torchish(jnp.tanh(_v(input)))
 
 
 @implements(torch.nn.functional.tanhshrink)
 def tanhshrink(input):
   return _v(input) - jnp.tanh(_v(input))
+
 
 @implements(torch.nn.functional.threshold, Torchishify_output=False)
 def threshold(input, threshold, value, inplace=False):

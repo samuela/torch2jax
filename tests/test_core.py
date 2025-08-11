@@ -1,13 +1,14 @@
 import jax
-jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import pytest
 import torch
-from jax import grad, jit, vmap, random
+from jax import grad, jit, random, vmap
 
 from torch2jax import t2j
 
 from .utils import aac, forward_test, out_kwarg_test, t2j_function_test
+
+jax.config.update("jax_enable_x64", True)
 
 
 def test_arange():
@@ -26,17 +27,21 @@ def test_empty():
   t2j_function_test(lambda: 0 * torch.nan_to_num(torch.empty(2)), [])
   t2j_function_test(lambda: 0 * torch.nan_to_num(torch.empty((2, 3))), [])
 
+
 def test_full():
   tests = [forward_test, out_kwarg_test]
   for test in tests:
-    test(lambda out=None: torch.full((), fill_value=1., out=out), [])
-    test(lambda out=None: torch.full((2, 3), fill_value=1., out=out), [])
+    test(lambda out=None: torch.full((), fill_value=1.0, out=out), [])
+    test(lambda out=None: torch.full((2, 3), fill_value=1.0, out=out), [])
+
 
 def test_is_floating_point():
   def f(x):
     return torch.is_floating_point(x)
-  assert t2j(f)(jnp.zeros((3, 4), dtype=jnp.float32)) == True
-  assert t2j(f)(jnp.zeros((3, 4), dtype=jnp.int32)) == False
+
+  assert t2j(f)(jnp.zeros((3, 4), dtype=jnp.float32))
+  assert not t2j(f)(jnp.zeros((3, 4), dtype=jnp.int32))
+
 
 def test_nan_to_num():
   for value in ["nan", "inf", "-inf"]:
@@ -102,7 +107,9 @@ def test_oneliners():
   t2j_function_test(torch.any, [(3, 2)], samplers=samplers, kwargs=dict(dim=1), grad_argnums=[])
 
   # bitwise_not on int and bool tensors
-  t2j_function_test(torch.bitwise_not, [(3, 2)], samplers=lambda key, shape: random.randint(key, shape, minval=0, maxval=1024))
+  t2j_function_test(
+    torch.bitwise_not, [(3, 2)], samplers=lambda key, shape: random.randint(key, shape, minval=0, maxval=1024)
+  )
   t2j_function_test(torch.bitwise_not, [(3, 2)], samplers=random.bernoulli)
   t2j_function_test(torch.cumsum, [(3, 5)], kwargs=dict(dim=1), atol=1e-6)
   t2j_function_test(torch.cumsum, [(3, 5)], kwargs=dict(dim=1), atol=1e-6)
@@ -127,7 +134,7 @@ def test_oneliners():
   t2j_function_test(torch.logical_not, [(3, 1)], samplers=random.bernoulli)
 
   # masked_fill
-  samplers=[random.normal, random.bernoulli, random.normal]
+  samplers = [random.normal, random.bernoulli, random.normal]
   t2j_function_test(torch.masked_fill, [(3, 5), (3, 5), ()], samplers=samplers)
   t2j_function_test(torch.masked_fill, [(3, 5), (3, 1), ()], samplers=samplers)
   t2j_function_test(torch.masked_fill, [(3, 5), (5,), ()], samplers=samplers)
@@ -153,19 +160,44 @@ def test_oneliners():
   # scatter
   index = jnp.array([[0, 1, 2, 0, 2], [1, 0, 0, 2, 1]])
   samplers = [random.normal, lambda key, shape: index, random.normal]
-  t2j_function_test(lambda input, index, src: torch.scatter(input, 0, index, src), [(3, 5), (2, 5), (2, 5)], samplers=samplers, atol=1e-6)
+  t2j_function_test(
+    lambda input, index, src: torch.scatter(input, 0, index, src),
+    [(3, 5), (2, 5), (2, 5)],
+    samplers=samplers,
+    atol=1e-6,
+  )
   index = jnp.array([[0, 1, 2, 0, 2]])
   samplers = [random.normal, lambda key, shape: index, random.normal]
-  t2j_function_test(lambda input, index, src: torch.scatter(input, 0, index, src), [(3, 5), (1, 5), (2, 5)], samplers=samplers, atol=1e-6)
+  t2j_function_test(
+    lambda input, index, src: torch.scatter(input, 0, index, src),
+    [(3, 5), (1, 5), (2, 5)],
+    samplers=samplers,
+    atol=1e-6,
+  )
   index = jnp.array([[0, 1, 2, 0]])
   samplers = [random.normal, lambda key, shape: index, random.normal]
-  t2j_function_test(lambda input, index, src: torch.scatter(input, 0, index, src), [(3, 5), (1, 4), (2, 5)], samplers=samplers, atol=1e-6)
+  t2j_function_test(
+    lambda input, index, src: torch.scatter(input, 0, index, src),
+    [(3, 5), (1, 4), (2, 5)],
+    samplers=samplers,
+    atol=1e-6,
+  )
   index = jnp.array([[4, 2, 3], [3, 0, 4]])
   samplers = [random.normal, lambda key, shape: index, random.normal]
-  t2j_function_test(lambda input, index, src: torch.scatter(input, 1, index, src), [(3, 5), (2, 3), (3, 5)], samplers=samplers, atol=1e-6)
+  t2j_function_test(
+    lambda input, index, src: torch.scatter(input, 1, index, src),
+    [(3, 5), (2, 3), (3, 5)],
+    samplers=samplers,
+    atol=1e-6,
+  )
   index = jnp.array([[4, 2, 3], [3, 0, 4], [0, 1, 2]])
   samplers = [random.normal, lambda key, shape: index, random.normal]
-  t2j_function_test(lambda input, index, src: torch.scatter(input, 1, index, src), [(3, 5), (3, 3), (3, 5)], samplers=samplers, atol=1e-6)
+  t2j_function_test(
+    lambda input, index, src: torch.scatter(input, 1, index, src),
+    [(3, 5), (3, 3), (3, 5)],
+    samplers=samplers,
+    atol=1e-6,
+  )
 
   t2j_function_test(lambda x: torch.pow(x, 2), [()])
   t2j_function_test(lambda x: torch.pow(x, 2), [(3,)])
