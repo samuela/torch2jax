@@ -99,6 +99,8 @@ def backward_test(f, args, kwargs={}, grad_argnums=None, **assert_kwargs):
   else:  # user specified tuple
     assert isinstance(grad_argnums, Sequence)
     argnums = grad_argnums
+  if len(argnums) == 0:
+    return
   for t2j_grad, torch_grad in zip(
     grad(t2j(f_), argnums=argnums)(*args),
     torch.func.grad(f_, argnums=argnums)(*torch_args),
