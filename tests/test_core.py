@@ -137,6 +137,10 @@ def test_oneliners():
   t2j_function_test(lambda x: x.view((3, 4)), [(12,)])
   t2j_function_test(lambda x: x.view((3, 4)), [(4, 3)])
 
+  # view with dtype
+  t2j_function_test(lambda x: x.view(torch.bool), [(12,)])
+  t2j_function_test(lambda x: x.view(torch.int32), [(4, 3)])
+
   t2j_function_test(lambda x: x.unsqueeze(0), [(4, 3)])
   t2j_function_test(lambda x: x.unsqueeze(1), [(4, 3)])
   t2j_function_test(lambda x: x.unsqueeze(2), [(4, 3)])
