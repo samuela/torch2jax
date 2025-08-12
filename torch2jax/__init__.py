@@ -170,10 +170,16 @@ class Torchish:
   def unsqueeze(self, dim): return Torchish(jnp.expand_dims(self.value, axis=dim))
   # fmt: on
 
-  def view(self, *shape):
-    if len(shape) == 1 and isinstance(shape[0], Sequence):
-      shape = shape[0]
-    return Torchish(jnp.reshape(self.value, shape))
+  def view(self, *shape_or_dtype):
+    if len(shape_or_dtype) == 1:
+      if isinstance(shape_or_dtype[0], Sequence):
+        return Torchish(self.value.reshape(shape_or_dtype[0]))
+      elif isinstance(dtype := shape_or_dtype[0], torch.dtype):
+        return Torchish(self.value.view(t2j_dtype(dtype)))
+      else:
+        raise ValueError(f"Tensor.view takes shape or dtype, got {shape_or_dtype[0]}")
+
+    return Torchish(jnp.reshape(self.value, shape_or_dtype))
 
   reshape = view
 
