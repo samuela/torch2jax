@@ -1,3 +1,4 @@
+import inspect
 from typing import Sequence
 
 import jax
@@ -6,7 +7,7 @@ import numpy as np
 import torch
 from jax import grad, jit, random
 
-from torch2jax import FUNCTIONS_WITH_OUT_KWARG, j2t, t2j
+from torch2jax import HANDLED_FUNCTIONS, j2t, t2j
 
 
 def aac(tree_a, tree_b, **kwargs):
@@ -118,8 +119,13 @@ def t2j_function_test(
     torch_output = forward_test(f, args, kwargs, **assert_kwargs)
     if isinstance(torch_output, torch.Tensor) and torch_output.numel() == 1 and len(args) > 0:
       backward_test(f, args, kwargs, grad_argnums=grad_argnums, **assert_kwargs)
-    if f in FUNCTIONS_WITH_OUT_KWARG:
-      out_kwarg_test(f, args, kwargs, **assert_kwargs)
+
+    if f in HANDLED_FUNCTIONS:
+      # we check whether "out" is the function's argument
+      sig = inspect.signature(HANDLED_FUNCTIONS(f), follow_wrapped=False)
+      if "out" in sig.parameters:
+        out_kwarg_test(f, args, kwargs, **assert_kwargs)
+
     if hasattr(f, "__name__"):
       if hasattr(torch.Tensor, f.__name__):
         Torchish_member_test(f, args, kwargs, **assert_kwargs)
