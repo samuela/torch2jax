@@ -47,3 +47,33 @@ def test_j2t_dtypes():
   assert j2t(jnp.dtype("complex64")) == torch.complex64
   assert j2t(jnp.dtype("complex128")) == torch.complex128
   assert j2t(jnp.dtype("bfloat16")) == torch.bfloat16
+
+
+def test_t2j_array_conversion():
+  assert t2j(torch.tensor(0.0, dtype=torch.float16)).dtype == jnp.float16
+  assert t2j(torch.tensor(0.0, dtype=torch.float32)).dtype == jnp.float32
+  # assert t2j(torch.tensor(0.0, dtype=torch.float64)).dtype == jnp.float64  # requires jax_enable_x64
+  assert t2j(torch.tensor(0, dtype=torch.int8)).dtype == jnp.int8
+  assert t2j(torch.tensor(0, dtype=torch.int16)).dtype == jnp.int16
+  assert t2j(torch.tensor(0, dtype=torch.int32)).dtype == jnp.int32
+  # assert t2j(torch.tensor(0, dtype=torch.int64)).dtype == jnp.int64  # requires jax_enable_x64
+  assert t2j(torch.tensor(0, dtype=torch.uint8)).dtype == jnp.uint8
+  assert t2j(torch.tensor(False, dtype=torch.bool)).dtype == jnp.bool_
+  assert t2j(torch.tensor(0.0, dtype=torch.complex64)).dtype == jnp.complex64
+  # assert t2j(torch.tensor(0.0, dtype=torch.complex128)).dtype == jnp.complex128  # requires jax_enable_x64
+  assert t2j(torch.tensor(0.0, dtype=torch.bfloat16)).dtype == jnp.bfloat16
+
+
+def test_j2t_array_conversion():
+  assert j2t(jnp.array(0.0, dtype=jnp.float16)).dtype == torch.float16
+  assert j2t(jnp.array(0.0, dtype=jnp.float32)).dtype == torch.float32
+  # assert j2t(jnp.array(0.0, dtype=jnp.float64)).dtype == torch.float64  # requires jax_enable_x64
+  assert j2t(jnp.array(0, dtype=jnp.int8)).dtype == torch.int8
+  assert j2t(jnp.array(0, dtype=jnp.int16)).dtype == torch.int16
+  assert j2t(jnp.array(0, dtype=jnp.int32)).dtype == torch.int32
+  # assert j2t(jnp.array(0, dtype=jnp.int64)).dtype == torch.int64  # requires jax_enable_x64
+  assert j2t(jnp.array(0, dtype=jnp.uint8)).dtype == torch.uint8
+  assert j2t(jnp.array(False, dtype=jnp.bool_)).dtype == torch.bool
+  assert j2t(jnp.array(0.0, dtype=jnp.complex64)).dtype == torch.complex64
+  # assert j2t(jnp.array(0.0, dtype=jnp.complex128)).dtype == torch.complex128  # requires jax_enable_x64
+  assert j2t(jnp.array(0.0, dtype=jnp.bfloat16)).dtype == torch.bfloat16
