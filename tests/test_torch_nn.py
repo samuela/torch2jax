@@ -363,44 +363,67 @@ def test_torch_nn_functional_scaled_dot_product_attention():
   sdpa = torch.nn.functional.scaled_dot_product_attention
   tests = [forward_test, partial(backward_test, argnums=(0, 1, 2))]
 
-  # default
-  t2j_function_test(sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7)], atol=1e-6, tests=tests)
-  t2j_function_test(sdpa, [(5, 7, 11), (5, 7, 11), (5, 7, 11)], atol=1e-6, tests=tests)
+  for qmult in [1, 2]:
+    if qmult == 2:
+      sdpa = partial(sdpa, enable_gqa=True)
+    # default
+    t2j_function_test(sdpa, [(5 * qmult, 3, 7), (5, 2, 7), (5, 2, 7)], atol=1e-6, tests=tests)
+    t2j_function_test(sdpa, [(5 * qmult, 7, 11), (5, 7, 11), (5, 7, 11)], atol=1e-6, tests=tests)
 
-  # default + attn_mask(float)
-  t2j_function_test(sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7), (3, 2)], atol=1e-6, tests=tests)
-  t2j_function_test(sdpa, [(5, 7, 11), (5, 7, 11), (5, 7, 11), (7, 7)], atol=1e-6, tests=tests)
+    # default + attn_mask(float)
+    t2j_function_test(sdpa, [(5 * qmult, 3, 7), (5, 2, 7), (5, 2, 7), (3, 2)], atol=1e-6, tests=tests)
+    t2j_function_test(sdpa, [(5 * qmult, 7, 11), (5, 7, 11), (5, 7, 11), (7, 7)], atol=1e-6, tests=tests)
 
-  # default + attn_mask(bool)
-  samplers = [random.normal] * 3 + [random.bernoulli]
-  t2j_function_test(sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7), (3, 2)], samplers=samplers, atol=1e-6, tests=tests)
-  t2j_function_test(sdpa, [(5, 7, 11), (5, 7, 11), (5, 7, 11), (7, 7)], samplers=samplers, atol=1e-6, tests=tests)
+    # default + attn_mask(bool)
+    samplers = [random.normal] * 3 + [random.bernoulli]
+    t2j_function_test(
+      sdpa, [(5 * qmult, 3, 7), (5, 2, 7), (5, 2, 7), (3, 2)], samplers=samplers, atol=1e-6, tests=tests
+    )
+    t2j_function_test(
+      sdpa, [(5 * qmult, 7, 11), (5, 7, 11), (5, 7, 11), (7, 7)], samplers=samplers, atol=1e-6, tests=tests
+    )
 
-  # test with different shapes
-  t2j_function_test(sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7), (1, 3, 2)], samplers=samplers, atol=1e-6, tests=tests)
-  t2j_function_test(sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7), (5, 3, 2)], samplers=samplers, atol=1e-6, tests=tests)
-  t2j_function_test(
-    sdpa, [(2, 5, 3, 7), (2, 5, 2, 7), (2, 5, 2, 7), (1, 3, 2)], samplers=samplers, atol=1e-6, tests=tests
-  )
-  t2j_function_test(
-    sdpa, [(2, 5, 3, 7), (2, 5, 2, 7), (2, 5, 2, 7), (5, 3, 2)], samplers=samplers, atol=1e-6, tests=tests
-  )
-  t2j_function_test(
-    sdpa, [(2, 5, 3, 7), (2, 5, 2, 7), (2, 5, 2, 7), (2, 1, 3, 2)], samplers=samplers, atol=1e-6, tests=tests
-  )
-  t2j_function_test(
-    sdpa, [(2, 5, 3, 7), (2, 5, 2, 7), (2, 5, 2, 7), (2, 5, 3, 2)], samplers=samplers, atol=1e-6, tests=tests
-  )
+    # test with different shapes
+    t2j_function_test(
+      sdpa, [(5 * qmult, 3, 7), (5, 2, 7), (5, 2, 7), (1, 3, 2)], samplers=samplers, atol=1e-6, tests=tests
+    )
+    t2j_function_test(
+      sdpa, [(5 * qmult, 3, 7), (5, 2, 7), (5, 2, 7), (5 * qmult, 3, 2)], samplers=samplers, atol=1e-6, tests=tests
+    )
+    t2j_function_test(
+      sdpa, [(2, 5 * qmult, 3, 7), (2, 5, 2, 7), (2, 5, 2, 7), (1, 3, 2)], samplers=samplers, atol=1e-6, tests=tests
+    )
+    t2j_function_test(
+      sdpa,
+      [(2, 5 * qmult, 3, 7), (2, 5, 2, 7), (2, 5, 2, 7), (5 * qmult, 3, 2)],
+      samplers=samplers,
+      atol=1e-6,
+      tests=tests,
+    )
+    t2j_function_test(
+      sdpa, [(2, 5 * qmult, 3, 7), (2, 5, 2, 7), (2, 5, 2, 7), (2, 1, 3, 2)], samplers=samplers, atol=1e-6, tests=tests
+    )
+    t2j_function_test(
+      sdpa,
+      [(2, 5 * qmult, 3, 7), (2, 5, 2, 7), (2, 5, 2, 7), (2, 5 * qmult, 3, 2)],
+      samplers=samplers,
+      atol=1e-6,
+      tests=tests,
+    )
 
-  # attn_mask are all false
-  samplers = [random.normal] * 3 + [lambda rng, shape: jnp.zeros(shape, dtype=jnp.bool)]
-  t2j_function_test(sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7), (3, 2)], samplers=samplers, atol=1e-6, tests=tests)
-  t2j_function_test(sdpa, [(5, 7, 11), (5, 7, 11), (5, 7, 11), (7, 7)], samplers=samplers, atol=1e-6, tests=tests)
+    # attn_mask are all false
+    samplers = [random.normal] * 3 + [lambda rng, shape: jnp.zeros(shape, dtype=jnp.bool)]
+    t2j_function_test(
+      sdpa, [(5 * qmult, 3, 7), (5, 2, 7), (5, 2, 7), (3, 2)], samplers=samplers, atol=1e-6, tests=tests
+    )
+    t2j_function_test(
+      sdpa, [(5 * qmult, 7, 11), (5, 7, 11), (5, 7, 11), (7, 7)], samplers=samplers, atol=1e-6, tests=tests
+    )
 
-  # causal=True
-  causal_sdpa = lambda *args: sdpa(*args, is_causal=True)
-  t2j_function_test(causal_sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7)], atol=1e-6, tests=tests)
-  t2j_function_test(causal_sdpa, [(5, 7, 11), (5, 7, 11), (5, 7, 11)], atol=1e-6, tests=tests)
+    # causal=True
+    causal_sdpa = partial(sdpa, is_causal=True)
+    t2j_function_test(causal_sdpa, [(5 * qmult, 3, 7), (5, 2, 7), (5, 2, 7)], atol=1e-6, tests=tests)
+    t2j_function_test(causal_sdpa, [(5 * qmult, 7, 11), (5, 7, 11), (5, 7, 11)], atol=1e-6, tests=tests)
 
   E = 6
   num_heads = 2
