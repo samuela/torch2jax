@@ -83,14 +83,20 @@ HANDLED_FUNCTIONS = {}
 
 class Torchish:
   def __init__(self, value):
+    self.value = value
+
+  @property
+  def value(self):
+    return self._value
+
+  @value.setter
+  def value(self, val):
     # See https://github.com/google/jax/issues/2115 re `isinstance(value, jnp.ndarray)`.
-    assert isinstance(value, jnp.ndarray) or isinstance(value, int) or isinstance(value, float), (
-      f"Tried to create Torchish with unsupported type: {type(value)}"
+    assert isinstance(val, jnp.ndarray) or isinstance(val, int) or isinstance(val, float), (
+      f"Tried to create Torchish with unsupported type: {type(val)}"
     )
     global _GRAD_ENABLED
-    if not _GRAD_ENABLED:
-      value = jax.lax.stop_gradient(value)
-    self.value = value
+    self._value = val if _GRAD_ENABLED else jax.lax.stop_gradient(val)
 
   # In order for PyTorch to accept an object as one of its own and allow dynamic dispatch it must either subclass
   # `torch.Tensor` or have a `__torch_function__` method. We opt to take the method route. Dispatch logic is handled in
