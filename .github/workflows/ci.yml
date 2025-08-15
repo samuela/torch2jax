@@ -17,7 +17,7 @@ jobs:
       # We use `sudo --version` to selectively run the install only when not on GitHub Actions.
       - run: sudo --version || (apt update && apt install -y curl git sudo xz-utils)
 
-      - uses: "cachix/install-nix-action@v22"
+      - uses: "cachix/install-nix-action@v31"
         with:
           extra_nix_config: experimental-features = nix-command flakes
           nix_path: nixpkgs=channel:nixos-unstable
