@@ -122,7 +122,7 @@ def t2j_function_test(
 
     if f in HANDLED_FUNCTIONS:
       # we check whether "out" is the function's argument
-      sig = inspect.signature(HANDLED_FUNCTIONS(f), follow_wrapped=False)
+      sig = inspect.signature(HANDLED_FUNCTIONS[f], follow_wrapped=False)
       if "out" in sig.parameters:
         out_kwarg_test(f, args, kwargs, **assert_kwargs)
 
