@@ -157,7 +157,8 @@ class Torchish:
   def __sub__(self, other): return Torchish(self.value - _coerce(other))
 
   # For some reason `foo = torch.foo` doesn't work on these
-  def clone(self): return Torchish(self.value.copy())
+  def all(*args, **kwargs): return torch.all(*args, **kwargs)
+  def clone(self): return Torchish(self.value)
   def contiguous(self): return self
   def cos(*args, **kwargs): return torch.cos(*args, **kwargs)
   def detach(self): return Torchish(jax.lax.stop_gradient(self.value))
@@ -172,8 +173,15 @@ class Torchish:
   def sin(*args, **kwargs): return torch.sin(*args, **kwargs)
   def size(self): return self.shape
   def sum(*args, **kwargs): return torch.sum(*args, **kwargs)
-  def to(self, *args, **kwargs): return self  # ignore device movement, jax manages its own placement.
+  def to(self, *args, **kwargs): 
+      if len(args) > 0 and isinstance(args[0],torch.dtype):
+          return Torchish(jnp.astype(self.value, t2j_dtype(args[0])))
+      dtype = kwargs.get('dtype')
+      if dtype is not None:
+          return Torchish(jnp.astype(self.value, t2j_dtype(dtype)))
+      return self 
   def transpose(*args, **kwargs): return torch.transpose(*args, **kwargs)
+  def type_as(self, other): return Torchish(jnp.astype(self.value, other.value.dtype))
   def unbind(*args, **kwargs): return torch.unbind(*args, **kwargs)
   def unsqueeze(self, dim): return Torchish(jnp.expand_dims(self.value, axis=dim))
   # fmt: on
@@ -283,6 +291,14 @@ auto_implements(torch.tanh, jnp.tanh)
 auto_implements(torch.transpose, jnp.swapaxes)
 
 
+@implements(torch.all, Torchishify_output=False)
+def all(input, dim=None, keepdim=False, out=None):
+  res = jnp.all(_v(input), axis=dim, keepdims=keepdim)
+  if out is None:
+      return Torchish(res)
+  else:
+      out.value = res
+ 
 @implements(torch._assert, Torchishify_output=False)
 def _assert(condition, message):
   if not condition:
@@ -376,10 +392,14 @@ def multinomial(input, num_samples, replacement=False, generator=None, out=None)
     raise ValueError(f"unsupported shape: {input.shape}")
 
 
-@implements(torch.mean)
+@implements(torch.mean, Torchishify_output=False)
 def mean(input, dim=None, keepdim=False, dtype=None, out=None):
   dtype = t2j_dtype(dtype) if dtype is not None else None
-  return jnp.mean(_v(input), axis=dim, keepdims=keepdim, dtype=dtype, out=out)
+  res = jnp.mean(_v(input), axis=dim, keepdims=keepdim, dtype=dtype)
+  if out is None:
+    return Torchish(res)
+  else:
+    out.value = res
 
 
 @implements(torch.normal)
@@ -532,11 +552,14 @@ def sort(input, dim=-1, descending=False, stable=False, *, out=None):
   return jnp.sort(_v(input), axis=dim, stable=stable, descending=descending)
 
 
-@implements(torch.sum)
+@implements(torch.sum, Torchishify_output=False)
 def sum(input, dim=None, keepdim=False, dtype=None, out=None):
   dtype = t2j_dtype(dtype) if dtype is not None else None
-  return jnp.sum(_v(input), axis=dim, keepdims=keepdim, dtype=dtype, out=out)
-
+  res = jnp.sum(_v(input), axis=dim, keepdims=keepdim, dtype=dtype)
+  if out is None:
+    return Torchish(res)
+  else:
+    out.value = res
 
 @implements(torch.tensor)
 def tensor(data, dtype=None, device=None, requires_grad=False, pin_memory=False):
@@ -1036,7 +1059,7 @@ def prelu(input: Torchish, weight: Torchish):
 
 
 @implements(torch.nn.functional.scaled_dot_product_attention)
-def scaled_dot_product_attention(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None):
+def scaled_dot_product_attention(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None, enable_gqa=False):
   assert dropout_p == 0.0, "TODO: implement dropout"
   Q, K, V = _v(query), _v(key), _v(value)
   # torch has (batch, num_heads, seq_len, head_dim) for Q, K, V
@@ -1145,6 +1168,7 @@ def multi_head_attention_forward(
   return Torchish(jnp.swapaxes(out, 0, 1)), None
 
 
+
 class TorchishMode(TorchFunctionMode):
   def __torch_function__(self, func, types, args, kwargs=None):
     # print(f"Function Log: {resolve_name(func)}(*{args}, **{kwargs}) with types {types}")
@@ -1158,6 +1182,10 @@ class TorchishMode(TorchFunctionMode):
         f"Unhandled function call: {resolve_name(func)}(*{args}, **{kwargs}) with types {types}. Please submit a bug report at https://github.com/samuela/torch2jax/issues."
       )
 
+@implements(torch._C._set_grad_enabled, Torchishify_output=False)
+def _set_grad_enabled(enabled):
+    # TODO: maybe should set a context wide flag indicating to wrap all results in stop_gradient
+    pass
 
 @contextmanager
 def override_Tensor_constructor():
@@ -1181,12 +1209,12 @@ def override_Tensor_constructor():
 
 def t2j_function(f):
   def f_jax(*args, rng=None):
-    torch_args = jax.tree_util.tree_map(Torchish, args)
+    torch_args = jax.tree.map(Torchish, args)
     with override_Tensor_constructor():
       with RngPooperContext(None if rng is None else RngPooper(rng)):
         with TorchishMode():
           out = f(*torch_args)
-    return out.value
+    return torch.utils._pytree.tree_map(lambda e: e.value, out)
 
   return f_jax
 
