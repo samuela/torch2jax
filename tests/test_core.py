@@ -287,7 +287,7 @@ def test_grad_on_off():
 
   # test inplace functions
   def f4(x):
-    # this is an effectively an identity function
+    # this is effectively an identity function
     # but with no_grad, the gradient should be zero
     y = -x
     with torch.no_grad():

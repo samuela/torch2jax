@@ -522,7 +522,7 @@ def randperm(
 
 
 @implements(torch._C._set_grad_enabled, Torchishify_output=False)
-def set_grad_enabled(mode):
+def _set_grad_enabled(mode):
   torch._C._set_grad_enabled(mode)
 
 
