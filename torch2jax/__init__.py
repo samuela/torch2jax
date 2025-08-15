@@ -80,11 +80,19 @@ HANDLED_FUNCTIONS = {}
 
 class Torchish:
   def __init__(self, value):
-    # See https://github.com/google/jax/issues/2115 re `isinstance(value, jnp.ndarray)`.
-    assert isinstance(value, jnp.ndarray) or isinstance(value, int) or isinstance(value, float), (
-      f"Tried to create Torchish with unsupported type: {type(value)}"
-    )
     self.value = value
+
+  @property
+  def value(self):
+    return self._value
+
+  @value.setter
+  def value(self, val):
+    # See https://github.com/google/jax/issues/2115 re `isinstance(value, jnp.ndarray)`.
+    assert isinstance(val, jnp.ndarray) or isinstance(val, int) or isinstance(val, float), (
+      f"Tried to create Torchish with unsupported type: {type(val)}"
+    )
+    self._value = val if torch.is_grad_enabled() else jax.lax.stop_gradient(val)
 
   # In order for PyTorch to accept an object as one of its own and allow dynamic dispatch it must either subclass
   # `torch.Tensor` or have a `__torch_function__` method. We opt to take the method route. Dispatch logic is handled in
@@ -511,6 +519,11 @@ def randperm(
   assert generator is None, "TODO: implement `generator`"
   assert out is None, "TODO: implement `out`"
   return jax.random.permutation(mk_rng(), n).astype(dtype or torch.int64)
+
+
+@implements(torch._C._set_grad_enabled, Torchishify_output=False)
+def _set_grad_enabled(mode):
+  torch._C._set_grad_enabled(mode)
 
 
 @implements(torch.sort)
