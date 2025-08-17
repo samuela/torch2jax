@@ -236,7 +236,7 @@ def test_inplace_Tensor_methods():
   t2j_function_test(f, [()], atol=1e-6)
   t2j_function_test(f, [(3,)], atol=1e-6)
   t2j_function_test(f, [(3, 5)], atol=1e-6)
-  aac(vmap(t2j(f))(jnp.array([1, 2, 3])), [f(1.0), f(2.0), f(3.0)])
+  aac(vmap(t2j(f))(jnp.array([1, 2, 3])), jnp.array([f(1.0), f(2.0), f(3.0)]))
 
 
 def test_grad_on_off():
