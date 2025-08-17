@@ -11,7 +11,7 @@ from torch2jax import HANDLED_FUNCTIONS, j2t, t2j
 
 
 def aac(tree_a, tree_b, **kwargs):
-  for a, b in zip(jax.tree_util.tree_flatten(tree_a)[0], jax.tree_util.tree_flatten(tree_b)[0]):
+  for a, b in zip(jax.tree.flatten(tree_a)[0], jax.tree.flatten(tree_b)[0]):
     np.testing.assert_allclose(a, b, **kwargs)
 
 
@@ -33,7 +33,7 @@ def test_t2j_array():
 
 
 def out_kwarg_test(f, args, kwargs={}, **assert_kwargs):
-  torch_kwargs = jax.tree_util.tree_map(lambda x: j2t(x) if isinstance(x, jnp.dtype) else x, kwargs)
+  torch_kwargs = jax.tree.map(lambda x: j2t(x) if isinstance(x, jnp.dtype) else x, kwargs)
 
   def torch_function(*torch_args):
     out1 = f(*torch_args, **torch_kwargs)
@@ -49,7 +49,7 @@ def out_kwarg_test(f, args, kwargs={}, **assert_kwargs):
 
 def Torchish_member_test(f, args, kwargs={}, inplace=False, **assert_kwargs):
   name = f.__name__ if not inplace else f"{f.__name__}_"
-  torch_kwargs = jax.tree_util.tree_map(lambda x: j2t(x) if isinstance(x, jnp.dtype) else x, kwargs)
+  torch_kwargs = jax.tree.map(lambda x: j2t(x) if isinstance(x, jnp.dtype) else x, kwargs)
 
   def torch_function(*torch_args):
     out1 = f(*torch_args, **torch_kwargs)
@@ -77,8 +77,8 @@ def args_generator(shapes, samplers=None, rng=random.PRNGKey(123)):
 
 
 def forward_test(f, args, kwargs={}, **assert_kwargs):
-  torch_args = jax.tree_util.tree_map(lambda x: j2t(x.copy()) if isinstance(x, (jnp.ndarray, jnp.dtype)) else x, args)
-  torch_kwargs = jax.tree_util.tree_map(lambda x: j2t(x) if isinstance(x, jnp.dtype) else x, kwargs)
+  torch_args = jax.tree.map(lambda x: j2t(x.copy()) if isinstance(x, (jnp.ndarray, jnp.dtype)) else x, args)
+  torch_kwargs = jax.tree.map(lambda x: j2t(x) if isinstance(x, jnp.dtype) else x, kwargs)
   f_ = lambda *args, **kwargs: f(*args, **torch_kwargs)
   torch_output = f_(*torch_args)
   aac(t2j(f_)(*args), torch_output, **assert_kwargs)
@@ -88,8 +88,8 @@ def forward_test(f, args, kwargs={}, **assert_kwargs):
 
 def backward_test(f, args, kwargs={}, grad_argnums=None, **assert_kwargs):
   n_inputs = len(args)
-  torch_args = jax.tree_util.tree_map(lambda x: j2t(x.copy()) if isinstance(x, (jnp.ndarray, jnp.dtype)) else x, args)
-  torch_kwargs = jax.tree_util.tree_map(lambda x: j2t(x) if isinstance(x, jnp.dtype) else x, kwargs)
+  torch_args = jax.tree.map(lambda x: j2t(x.copy()) if isinstance(x, (jnp.ndarray, jnp.dtype)) else x, args)
+  torch_kwargs = jax.tree.map(lambda x: j2t(x) if isinstance(x, jnp.dtype) else x, kwargs)
   # TODO: consider doing this for all functions by doing eg f_ = lambda x: torch.sum(f(x) ** 2)
   # Can only calculate gradients on scalar-output functions
   f_ = lambda *args: f(*args, **torch_kwargs).flatten()[0]

@@ -1175,7 +1175,7 @@ def override_Tensor_constructor():
 
 def t2j_function(f):
   def f_jax(*args, rng=None):
-    torch_args = jax.tree_util.tree_map(Torchish, args)
+    torch_args = jax.tree.map(Torchish, args)
     with override_Tensor_constructor():
       with RngPooperContext(None if rng is None else RngPooper(rng)):
         with TorchishMode():
