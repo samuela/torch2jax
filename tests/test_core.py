@@ -237,3 +237,65 @@ def test_inplace_Tensor_methods():
   t2j_function_test(f, [(3,)], atol=1e-6)
   t2j_function_test(f, [(3, 5)], atol=1e-6)
   aac(vmap(t2j(f))(jnp.array([1, 2, 3])), jnp.array([f(1.0), f(2.0), f(3.0)]))
+
+
+def test_grad_on_off():
+  with torch.no_grad():
+    assert torch.is_grad_enabled() is False
+
+  with torch.enable_grad():
+    assert torch.is_grad_enabled() is True
+
+  with torch.set_grad_enabled(True):
+    assert torch.is_grad_enabled() is True
+
+  with torch.set_grad_enabled(False):
+    assert torch.is_grad_enabled() is False
+
+  # test no_grad context
+  def f1(x):
+    with torch.no_grad():
+      a = x * 2
+    b = torch.sin(a)
+    c = torch.cos(x)
+    with torch.no_grad():
+      d = torch.pow(c, 2)
+    return b * c + d
+
+  t2j_function_test(f1, [()], atol=1e-6)
+
+  # test enable_grad
+  def f2(x):
+    @torch.enable_grad()
+    def doubler(x):
+      return x * 2
+
+    with torch.no_grad():
+      z = doubler(x)
+    return z
+
+  t2j_function_test(f2, [()], atol=1e-6)
+
+  # test set_grad_enabled
+  def f3(x):
+    with torch.set_grad_enabled(False):
+      with torch.set_grad_enabled(True):
+        y = torch.sin(x)
+      y = y * 2
+    with torch.set_grad_enabled(True):
+      with torch.set_grad_enabled(False):
+        z = torch.cos(x)
+      z = z * 3
+    return y + z
+
+  t2j_function_test(f3, [()], atol=1e-6)
+
+  # test inplace functions
+  def f4(x):
+    # this is effectively an identity function
+    # but with no_grad, the gradient should be zero
+    y = -x
+    with torch.no_grad():
+      return torch.nn.functional.relu(x, inplace=True) - torch.nn.functional.relu(y, inplace=True)
+
+  t2j_function_test(f4, [()], atol=1e-6)
