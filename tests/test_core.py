@@ -27,11 +27,11 @@ def test_empty():
 
 def test_nan_to_num():
   for value in ["nan", "inf", "-inf"]:
-    samplers = lambda rng, shape: jnp.array([float(value), 1.0, 2.0])
+    samplers = [lambda rng, shape: jnp.array([float(value), 1.0, 2.0])]
     t2j_function_test(torch.nan_to_num, [(3,)], samplers=samplers, num_tests=1)
 
   # Test handling of all special values with custom replacements
-  samplers = lambda rng, shape: jnp.array([float("nan"), float("inf"), float("-inf")])
+  samplers = [lambda rng, shape: jnp.array([float("nan"), float("inf"), float("-inf")])]
   t2j_function_test(
     torch.nan_to_num, [(3,)], kwargs=dict(nan=0.0, posinf=1.0, neginf=-1.0), samplers=samplers, num_tests=1
   )

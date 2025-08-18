@@ -1,6 +1,6 @@
 import inspect
-from typing import Sequence
 
+import chex
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -11,8 +11,7 @@ from torch2jax import HANDLED_FUNCTIONS, j2t, t2j
 
 
 def aac(tree_a, tree_b, **kwargs):
-  for a, b in zip(jax.tree_util.tree_flatten(tree_a)[0], jax.tree_util.tree_flatten(tree_b)[0]):
-    np.testing.assert_allclose(a, b, **kwargs)
+  chex.assert_trees_all_close(tree_a, tree_b, **kwargs)
 
 
 def anac(*args, **kwargs):
@@ -68,8 +67,6 @@ def args_generator(shapes, samplers=None, rng=random.PRNGKey(123)):
   n_inputs = len(shapes)
   if samplers is None:
     samplers = [random.normal] * n_inputs
-  elif not isinstance(samplers, Sequence):
-    samplers = [samplers] * n_inputs
   while True:
     rng, rng1 = random.split(rng)
     args = [sampler(rng, shape=shape) for rng, shape, sampler in zip(random.split(rng1, n_inputs), shapes, samplers)]
@@ -93,13 +90,7 @@ def backward_test(f, args, kwargs={}, grad_argnums=None, **assert_kwargs):
   # TODO: consider doing this for all functions by doing eg f_ = lambda x: torch.sum(f(x) ** 2)
   # Can only calculate gradients on scalar-output functions
   f_ = lambda *args: f(*args, **torch_kwargs).flatten()[0]
-  if grad_argnums is None:  # default, test grad wrt all
-    argnums = tuple(range(n_inputs))
-  elif isinstance(grad_argnums, int):  # test only one input
-    argnums = (grad_argnums,)
-  else:  # user specified tuple
-    assert isinstance(grad_argnums, Sequence)
-    argnums = grad_argnums
+  argnums = grad_argnums if grad_argnums is not None else tuple(range(n_inputs))
   if len(argnums) == 0:
     return
   for t2j_grad, torch_grad in zip(
@@ -113,7 +104,6 @@ def t2j_function_test(
   f, args_shapes, kwargs={}, samplers=None, rng=random.PRNGKey(123), grad_argnums=None, num_tests=5, **assert_kwargs
 ):
   generator = args_generator(args_shapes, samplers, rng)
-  args = next(generator)
   for i in range(num_tests):
     args = next(generator)
     torch_output = forward_test(f, args, kwargs, **assert_kwargs)

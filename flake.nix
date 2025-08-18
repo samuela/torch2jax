@@ -46,6 +46,7 @@
             pkgs.ruff
 
             build
+            chex
             ipython
             jax
             jaxlib'
