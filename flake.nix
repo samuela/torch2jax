@@ -31,6 +31,7 @@
             torch
           ];
           nativeCheckInputs = [
+            chex
             jaxlib'
             pytestCheckHook
             torchvision
