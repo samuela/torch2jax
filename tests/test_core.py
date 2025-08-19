@@ -89,6 +89,7 @@ def test_oneliners():
   f = [forward_test]
   fb = f + [backward_test]
   fbm = fb + [Torchish_member_test]
+  fbo = fb + [out_kwarg_test]
   fbmo = fbm + [out_kwarg_test]
 
   t2j_function_test(lambda x: torch.pow(x, 2), [()], tests=fb)
@@ -171,8 +172,8 @@ def test_oneliners():
   t2j_function_test(lambda x: torch.transpose(x, 0, 2), [(2, 3, 5)], tests=fb)
   t2j_function_test(lambda x: torch.transpose(x, 2, 1), [(2, 3, 5)], tests=fb)
 
-  t2j_function_test(lambda x, y: torch.cat((x, y)), [(2, 3), (5, 3)], tests=fb)
-  t2j_function_test(lambda x, y: torch.cat((x, y), dim=-1), [(2, 3), (2, 5)], tests=fb)
+  t2j_function_test(lambda x, y: torch.cat((x, y)), [(2, 3), (5, 3)], tests=fbo)
+  t2j_function_test(lambda x, y: torch.cat((x, y), dim=-1), [(2, 3), (2, 5)], tests=fbo)
 
   t2j_function_test(torch.flatten, [(2, 3, 5)], tests=fbm)
   t2j_function_test(torch.flatten, [(2, 3, 5)], kwargs=dict(start_dim=1), tests=fbm)
