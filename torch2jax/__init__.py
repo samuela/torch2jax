@@ -595,8 +595,8 @@ def batch_norm(input, running_mean, running_var, weight=None, bias=None, trainin
 
     mean = jnp.mean(x_, axis=(0, 2))
     var = jnp.var(x_, axis=(0, 2), ddof=1)
-    running_mean.value = momentum * mean + (1 - momentum) * running_mean.value
-    running_var.value = momentum * var + (1 - momentum) * running_var.value
+    running_mean.value = jax.lax.stop_gradient(momentum * mean + (1 - momentum) * running_mean.value)
+    running_var.value = jax.lax.stop_gradient(momentum * var + (1 - momentum) * running_var.value)
 
     # Why different ddof values are used for running_var and working_var I will never understand...
     working_mean = mean

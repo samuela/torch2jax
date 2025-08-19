@@ -340,7 +340,7 @@ def test_torch_nn_functional_batch_norm():
     # Variance needs to be positive for sensible results so we square it.
     running_var = running_var.pow(2)
     out = torch.nn.functional.batch_norm(input, running_mean, running_var, weight=weight, bias=bias, training=True)
-    return torch.cat([out.flatten(), running_mean.flatten(), running_var.flatten()])
+    return out, running_mean, running_var
 
   t2j_function_test(f, [(2, 3), (3,), (3,), (3,), (3,)], atol=1e-5, tests=tests)
   t2j_function_test(f, [(2, 3, 5), (3,), (3,), (3,), (3,)], atol=1e-6, tests=tests)
