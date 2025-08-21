@@ -1,11 +1,14 @@
+import chex
+import jax
 import jax.numpy as jnp
 import numpy as np
 import torch
 from jax import grad, jit, random
+from torch.utils._pytree import tree_leaves
 
 from torch2jax import j2t, t2j
 
-aac = np.testing.assert_allclose
+aac = chex.assert_trees_all_close
 
 
 def anac(*args, **kwargs):
@@ -25,40 +28,88 @@ def test_t2j_array():
   aac(t2j(torch.eye(3).unsqueeze(0)), jnp.eye(3)[jnp.newaxis, ...])
 
 
+def out_kwarg_test(f, args, kwargs={}, **assert_kwargs):
+  torch_kwargs = jax.tree.map(lambda x: j2t(x) if isinstance(x, jnp.dtype) else x, kwargs)
+
+  def torch_function(*torch_args):
+    out1 = f(*torch_args, **torch_kwargs)
+    out2 = torch.zeros_like(out1)
+    out3 = f(*torch_args, out=out2, **torch_kwargs)
+    return out1, out2, out3
+
+  jax_function = t2j(torch_function)
+  jax_out1, jax_out2, jax_out3 = jax_function(*args)
+  assert jax_out2 is jax_out3
+  aac(jax_out1, jax_out3, **assert_kwargs)
+
+
+def Torchish_member_test(f, args, kwargs={}, **assert_kwargs):
+  torch_kwargs = jax.tree.map(lambda x: j2t(x) if isinstance(x, jnp.dtype) else x, kwargs)
+
+  def torch_function(*torch_args, name=f.__name__):
+    out1 = f(*torch_args, **torch_kwargs)
+    out2 = torch_args[0].clone()
+    out3 = getattr(out2, name)(*torch_args[1:], **torch_kwargs)
+    return out1, out2, out3
+
+  jax_out1, jax_out2, jax_out3 = t2j(lambda *args: torch_function(*args, name=f.__name__))(*args)
+  aac(jax_out1, jax_out3, **assert_kwargs)
+  if hasattr(torch.Tensor, f"{f.__name__}_"):
+    jax_out1, jax_out2, jax_out3 = t2j(lambda *args: torch_function(*args, name=f"{f.__name__}_"))(*args)
+    assert jax_out2 is jax_out3
+    aac(jax_out1, jax_out3, **assert_kwargs)
+
+
+def args_generator(shapes, samplers=None, rng=random.PRNGKey(123)):
+  n_inputs = len(shapes)
+  if samplers is None:
+    samplers = [random.normal] * n_inputs
+  while True:
+    rng, rng1 = random.split(rng)
+    args = [sampler(rng, shape=shape) for rng, shape, sampler in zip(random.split(rng1, n_inputs), shapes, samplers)]
+    yield args
+
+
+def forward_test(f, args, kwargs={}, **assert_kwargs):
+  torch_args = jax.tree.map(lambda x: j2t(x.copy()) if isinstance(x, (jnp.ndarray, jnp.dtype)) else x, args)
+  torch_kwargs = jax.tree.map(lambda x: j2t(x) if isinstance(x, jnp.dtype) else x, kwargs)
+  f_ = lambda *args, **kwargs: f(*args, **torch_kwargs)
+  torch_output = f_(*torch_args)
+  aac(t2j(f_)(*args), torch_output, **assert_kwargs)
+  aac(jit(t2j(f_))(*args), torch_output, **assert_kwargs)
+
+
+def backward_test(f, args, kwargs={}, argnums=None, **assert_kwargs):
+  n_inputs = len(args)
+  argnums = argnums if argnums is not None else tuple(range(n_inputs))
+  if n_inputs == 0 or len(argnums) == 0:
+    return
+  torch_args = jax.tree.map(lambda x: j2t(x.copy()) if isinstance(x, (jnp.ndarray, jnp.dtype)) else x, args)
+  torch_kwargs = jax.tree.map(lambda x: j2t(x) if isinstance(x, jnp.dtype) else x, kwargs)
+  # always reduce output to the mean of all elements
+  f_ = lambda *args: torch.cat(list(map(lambda x: x.flatten(), tree_leaves(f(*args, **torch_kwargs))))).mean()
+  for t2j_grad, torch_grad in zip(
+    grad(t2j(f_), argnums=argnums)(*args),
+    torch.func.grad(f_, argnums=argnums)(*torch_args),
+  ):
+    aac(t2j_grad.squeeze(), torch_grad.squeeze(), **assert_kwargs)
+
+
 def t2j_function_test(
-  f, input_shapes, samplers=None, rng=random.PRNGKey(123), grad_argnums=None, num_tests=5, **assert_kwargs
+  f,
+  args_shapes,
+  kwargs={},
+  samplers=None,
+  rng=random.PRNGKey(123),
+  num_tests=5,
+  tests=[forward_test, backward_test],
+  **assert_kwargs,
 ):
-  for test_rng in random.split(rng, num_tests):
-    # This is a thunk since methods like torch.nn.functional.batch_norm mutate the inputs and that affects subsequent
-    # tests. We construct fresh values each time as a mitigation.
-    n_inputs = len(input_shapes)
-    samplers = [random.normal] * n_inputs if samplers is None else samplers
-    inputs = lambda: [
-      sampler(rng, shape=shape) for rng, shape, sampler in zip(random.split(test_rng, n_inputs), input_shapes, samplers)
-    ]
-    torch_output = f(*map(j2t, inputs()))
-    aac(t2j(f)(*inputs()), torch_output, **assert_kwargs)
-    aac(jit(t2j(f))(*inputs()), torch_output, **assert_kwargs)
-
-    # TODO: consider doing this for all functions by doing eg f_ = lambda x: torch.sum(f(x) ** 2)
-    # Can only calculate gradients on scalar-output functions
-    if torch_output.numel() == 1 and len(inputs()) > 0:
-      f_ = lambda *args: f(*args).flatten()[0]
-
-      # Branching is necessary to avoid `TypeError: iteration over a 0-d array` in the zip.
-      if n_inputs > 1:
-        argnums = grad_argnums if grad_argnums is not None else tuple(range(n_inputs))
-        for t2j_grad, torch_grad in zip(
-          grad(t2j(f_), argnums=argnums)(*inputs()), torch.func.grad(f_, argnums=argnums)(*map(j2t, inputs()))
-        ):
-          aac(t2j_grad.squeeze(), torch_grad.squeeze(), **assert_kwargs)
-      else:
-        [input] = inputs()
-        aac(
-          grad(t2j(f_))(input).squeeze(),
-          torch.func.grad(f_)(j2t(input)).squeeze(),
-          **assert_kwargs,
-        )
+  generator = args_generator(args_shapes, samplers, rng)
+  for test in tests:
+    for i in range(num_tests):
+      args = next(generator)
+      test(f, args, kwargs, **assert_kwargs)
 
 
 def assert_state_dicts_allclose(actual, desired, **kwargs):

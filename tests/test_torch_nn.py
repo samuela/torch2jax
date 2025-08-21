@@ -10,7 +10,7 @@ from jax import grad, jit, random
 
 from torch2jax import RngPooper, j2t, t2j
 
-from .utils import aac, anac, assert_state_dicts_allclose, t2j_function_test
+from .utils import aac, anac, assert_state_dicts_allclose, backward_test, forward_test, t2j_function_test
 
 
 def test_torch_nn_AdaptiveAvgPool2d():
@@ -327,10 +327,12 @@ def test_torch_nn_functional_batch_norm():
   # torch.nn.functional.batch_norm takes as input.ndim() >= 2, and it expects 1D running_mean and running_var to have
   # the shape (input.shape[1], )
 
+  # only compute gradients for the input, weight, and bias
+  tests = [forward_test, partial(backward_test, argnums=(0, 3, 4))]
   f = partial(torch.nn.functional.batch_norm, training=False)
-  t2j_function_test(f, [(2, 3), (3,), (3,), (3,), (3,)], atol=1e-5)
-  t2j_function_test(f, [(2, 3, 5), (3,), (3,), (3,), (3,)], atol=1e-5)
-  t2j_function_test(f, [(2, 3, 5, 7), (3,), (3,), (3,), (3,)], atol=1e-5)
+  t2j_function_test(f, [(2, 3), (3,), (3,), (3,), (3,)], atol=1e-5, tests=tests)
+  t2j_function_test(f, [(2, 3, 5), (3,), (3,), (3,), (3,)], atol=1e-5, tests=tests)
+  t2j_function_test(f, [(2, 3, 5, 7), (3,), (3,), (3,), (3,)], atol=1e-5, tests=tests)
 
   def f(input, running_mean, running_var, weight, bias):
     # When training=True running_mean and running_var are mutated.
@@ -338,11 +340,11 @@ def test_torch_nn_functional_batch_norm():
     # Variance needs to be positive for sensible results so we square it.
     running_var = running_var.pow(2)
     out = torch.nn.functional.batch_norm(input, running_mean, running_var, weight=weight, bias=bias, training=True)
-    return torch.cat([out.flatten(), running_mean.flatten(), running_var.flatten()])
+    return out, running_mean, running_var
 
-  t2j_function_test(f, [(2, 3), (3,), (3,), (3,), (3,)], atol=1e-5)
-  t2j_function_test(f, [(2, 3, 5), (3,), (3,), (3,), (3,)], atol=1e-6)
-  t2j_function_test(f, [(2, 3, 5, 7), (3,), (3,), (3,), (3,)], atol=1e-6)
+  t2j_function_test(f, [(2, 3), (3,), (3,), (3,), (3,)], atol=1e-5, tests=tests)
+  t2j_function_test(f, [(2, 3, 5), (3,), (3,), (3,), (3,)], atol=1e-6, tests=tests)
+  t2j_function_test(f, [(2, 3, 5, 7), (3,), (3,), (3,), (3,)], atol=1e-6, tests=tests)
 
 
 def test_torch_nn_functional_prelu():
@@ -359,37 +361,46 @@ def test_torch_nn_functional_scaled_dot_product_attention():
   t2j_function_test(lambda x, y: x @ y, [(2, 3, 5), (5, 7)], atol=1e-6)
 
   sdpa = torch.nn.functional.scaled_dot_product_attention
+  tests = [forward_test, partial(backward_test, argnums=(0, 1, 2))]
 
   # default
-  t2j_function_test(sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7)], atol=1e-6)
-  t2j_function_test(sdpa, [(5, 7, 11), (5, 7, 11), (5, 7, 11)], atol=1e-6)
+  t2j_function_test(sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7)], atol=1e-6, tests=tests)
+  t2j_function_test(sdpa, [(5, 7, 11), (5, 7, 11), (5, 7, 11)], atol=1e-6, tests=tests)
 
   # default + attn_mask(float)
-  t2j_function_test(sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7), (3, 2)], atol=1e-6)
-  t2j_function_test(sdpa, [(5, 7, 11), (5, 7, 11), (5, 7, 11), (7, 7)], atol=1e-6)
+  t2j_function_test(sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7), (3, 2)], atol=1e-6, tests=tests)
+  t2j_function_test(sdpa, [(5, 7, 11), (5, 7, 11), (5, 7, 11), (7, 7)], atol=1e-6, tests=tests)
 
   # default + attn_mask(bool)
   samplers = [random.normal] * 3 + [random.bernoulli]
-  t2j_function_test(sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7), (3, 2)], samplers=samplers, atol=1e-6)
-  t2j_function_test(sdpa, [(5, 7, 11), (5, 7, 11), (5, 7, 11), (7, 7)], samplers=samplers, atol=1e-6)
+  t2j_function_test(sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7), (3, 2)], samplers=samplers, atol=1e-6, tests=tests)
+  t2j_function_test(sdpa, [(5, 7, 11), (5, 7, 11), (5, 7, 11), (7, 7)], samplers=samplers, atol=1e-6, tests=tests)
 
   # test with different shapes
-  t2j_function_test(sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7), (1, 3, 2)], samplers=samplers, atol=1e-6)
-  t2j_function_test(sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7), (5, 3, 2)], samplers=samplers, atol=1e-6)
-  t2j_function_test(sdpa, [(2, 5, 3, 7), (2, 5, 2, 7), (2, 5, 2, 7), (1, 3, 2)], samplers=samplers, atol=1e-6)
-  t2j_function_test(sdpa, [(2, 5, 3, 7), (2, 5, 2, 7), (2, 5, 2, 7), (5, 3, 2)], samplers=samplers, atol=1e-6)
-  t2j_function_test(sdpa, [(2, 5, 3, 7), (2, 5, 2, 7), (2, 5, 2, 7), (2, 1, 3, 2)], samplers=samplers, atol=1e-6)
-  t2j_function_test(sdpa, [(2, 5, 3, 7), (2, 5, 2, 7), (2, 5, 2, 7), (2, 5, 3, 2)], samplers=samplers, atol=1e-6)
+  t2j_function_test(sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7), (1, 3, 2)], samplers=samplers, atol=1e-6, tests=tests)
+  t2j_function_test(sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7), (5, 3, 2)], samplers=samplers, atol=1e-6, tests=tests)
+  t2j_function_test(
+    sdpa, [(2, 5, 3, 7), (2, 5, 2, 7), (2, 5, 2, 7), (1, 3, 2)], samplers=samplers, atol=1e-6, tests=tests
+  )
+  t2j_function_test(
+    sdpa, [(2, 5, 3, 7), (2, 5, 2, 7), (2, 5, 2, 7), (5, 3, 2)], samplers=samplers, atol=1e-6, tests=tests
+  )
+  t2j_function_test(
+    sdpa, [(2, 5, 3, 7), (2, 5, 2, 7), (2, 5, 2, 7), (2, 1, 3, 2)], samplers=samplers, atol=1e-6, tests=tests
+  )
+  t2j_function_test(
+    sdpa, [(2, 5, 3, 7), (2, 5, 2, 7), (2, 5, 2, 7), (2, 5, 3, 2)], samplers=samplers, atol=1e-6, tests=tests
+  )
 
   # attn_mask are all false
   samplers = [random.normal] * 3 + [lambda rng, shape: jnp.zeros(shape, dtype=jnp.bool)]
-  t2j_function_test(sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7), (3, 2)], samplers=samplers, atol=1e-6)
-  t2j_function_test(sdpa, [(5, 7, 11), (5, 7, 11), (5, 7, 11), (7, 7)], samplers=samplers, atol=1e-6)
+  t2j_function_test(sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7), (3, 2)], samplers=samplers, atol=1e-6, tests=tests)
+  t2j_function_test(sdpa, [(5, 7, 11), (5, 7, 11), (5, 7, 11), (7, 7)], samplers=samplers, atol=1e-6, tests=tests)
 
   # causal=True
   causal_sdpa = lambda *args: sdpa(*args, is_causal=True)
-  t2j_function_test(causal_sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7)], atol=1e-6)
-  t2j_function_test(causal_sdpa, [(5, 7, 11), (5, 7, 11), (5, 7, 11)], atol=1e-6)
+  t2j_function_test(causal_sdpa, [(5, 3, 7), (5, 2, 7), (5, 2, 7)], atol=1e-6, tests=tests)
+  t2j_function_test(causal_sdpa, [(5, 7, 11), (5, 7, 11), (5, 7, 11)], atol=1e-6, tests=tests)
 
   E = 6
   num_heads = 2
@@ -399,28 +410,24 @@ def test_torch_nn_functional_scaled_dot_product_attention():
     )[0],
     [(3, 1, 6)] * 3 + [(3 * E, E), (3 * E,), (E, E), (E,)],
     atol=1e-5,
+    tests=tests,
   )
   # TODO test MHA without batch dimension
 
 
 def test_torch_nn_functional_embedding():
+  tests = [forward_test, partial(backward_test, argnums=(1,))]
   samplers = [lambda key, shape: random.randint(key, shape=shape, minval=0, maxval=10), random.normal]
   embedding = lambda input, weight: torch.nn.functional.embedding(input, weight).mean()
-  t2j_function_test(torch.nn.functional.embedding, [(5,), (10, 3)], grad_argnums=(1,), samplers=samplers, atol=1e-6)
-  t2j_function_test(
-    torch.nn.functional.embedding,
-    [(4, 5), (10, 3)],
-    grad_argnums=(1,),
-    samplers=samplers,
-    atol=1e-6,
-  )
+  t2j_function_test(torch.nn.functional.embedding, [(5,), (10, 3)], samplers=samplers, atol=1e-6, tests=tests)
+  t2j_function_test(torch.nn.functional.embedding, [(4, 5), (10, 3)], samplers=samplers, atol=1e-6, tests=tests)
 
   # test padding_idx
   embedding = lambda input, weight: torch.nn.functional.embedding(input, weight, padding_idx=0).mean()
-  t2j_function_test(embedding, [(5,), (10, 3)], samplers=samplers, grad_argnums=(1,), atol=1e-6)
-  t2j_function_test(embedding, [(4, 5), (10, 3)], samplers=samplers, grad_argnums=(1,), atol=1e-6)
+  t2j_function_test(embedding, [(5,), (10, 3)], samplers=samplers, atol=1e-6, tests=tests)
+  t2j_function_test(embedding, [(4, 5), (10, 3)], samplers=samplers, atol=1e-6, tests=tests)
 
   # test scale_grad_by_freq
   embedding = lambda input, weight: torch.nn.functional.embedding(input, weight, scale_grad_by_freq=True).mean()
-  t2j_function_test(embedding, [(20,), (10, 3)], samplers=samplers, grad_argnums=(1,), atol=1e-6)
-  t2j_function_test(embedding, [(4, 20), (10, 3)], samplers=samplers, grad_argnums=(1,), atol=1e-6)
+  t2j_function_test(embedding, [(20,), (10, 3)], samplers=samplers, atol=1e-6, tests=tests)
+  t2j_function_test(embedding, [(4, 20), (10, 3)], samplers=samplers, atol=1e-6, tests=tests)
