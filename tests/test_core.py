@@ -1,3 +1,5 @@
+from functools import partial
+
 import jax.numpy as jnp
 import pytest
 import torch
@@ -59,6 +61,10 @@ def test_tensor():
   t2j_function_test(lambda: torch.tensor([1, 2, 3]), [], tests=tests)
   t2j_function_test(lambda: torch.tensor([[1, 2, 3], [4, 5, 6]]), [], tests=tests)
 
+  # test that an integer/boolean input will have the correct dtype
+  # explicitly cast them to clearly show the intention
+  t2j_function_test(lambda: torch.tensor(int(1)), [], tests=tests)
+  t2j_function_test(lambda: torch.tensor(bool(True)), [], tests=tests)
   # torch allows calling torch.tensor with a torch.Tensor. This gets a little tricky with Torchish.
   t2j_function_test(lambda: torch.tensor(torch.arange(3)), [], tests=tests)
 
@@ -83,6 +89,54 @@ def test_unbind():
   tests = [forward_test, backward_test, Torchish_member_test]
   t2j_function_test(torch.unbind, [(2, 3)], tests=tests)
   t2j_function_test(torch.unbind, [(2, 3)], kwargs={"dim": 1}, tests=tests)
+
+
+def test_get_set_item():
+  # slice(torch.tensor(1), torch.tensor(3)) is not jittable in jax, because the start/end are dynamic,
+  # and the shape can't be inferred. But it works when it is not jitted. This behavior is aligned with pure jax code,
+  # where dynamic slice only works when not jitted. Therefore we turn off jit test here.
+
+  # getitem
+  tests = [forward_test, backward_test]
+  tests_nojit = [partial(forward_test, test_jit=False), backward_test]
+  t2j_function_test(lambda x: x[0, 1, 2], [(3, 4, 5)], tests=tests)
+  t2j_function_test(lambda x: x[:, 1, 2], [(3, 4, 5)], tests=tests)
+  t2j_function_test(lambda x: x[0, :, 2], [(3, 4, 5)], tests=tests)
+  t2j_function_test(lambda x: x[0, 1, :], [(3, 4, 5)], tests=tests)
+  t2j_function_test(lambda x: x[1:, 1:3, 2], [(3, 4, 5)], tests=tests)
+  t2j_function_test(lambda x: x[torch.tensor([1, 2]), :, torch.tensor([2, 3])], [(3, 4, 5)], tests=tests)
+  # when the slice object is dynamic, jax will refuse to run with jit.
+  t2j_function_test(lambda x: x[1:, torch.tensor(1) : torch.tensor(3), 2], [(3, 4, 5)], tests=tests_nojit)
+
+  # setitem
+  def f(x, key, y):
+    x[*key] = y
+    return x
+
+  # in torch, __setitem__ is for inplace assignment, it is not differentiable in torch.
+  tests = [forward_test, partial(backward_test, argnums=(1,))]
+  tests_nojit = [partial(forward_test, test_jit=False), partial(backward_test, argnums=(1,))]
+  t2j_function_test(lambda x, y: f(x, [0, 1, 2], y), [(3, 4, 5), ()], tests=tests)
+  t2j_function_test(lambda x, y: f(x, [slice(None), 1, 2], y), [(3, 4, 5), (3,)], tests=tests)
+  t2j_function_test(lambda x, y: f(x, [0, slice(None), 2], y), [(3, 4, 5), (4,)], tests=tests)
+  t2j_function_test(lambda x, y: f(x, [0, 1, slice(None)], y), [(3, 4, 5), (5,)], tests=tests)
+  t2j_function_test(lambda x, y: f(x, [slice(1, None), slice(1, 3), 2], y), [(3, 4, 5), (2, 2)], tests=tests)
+  t2j_function_test(lambda x, y: f(x, [slice(1, None), slice(1, 3), 2], y), [(3, 4, 5), (2, 1)], tests=tests)
+  t2j_function_test(
+    lambda x, y: f(x, [torch.tensor([1, 2]), slice(None), torch.tensor([2, 3])], y),
+    [(3, 4, 5), (2, 4)],
+    tests=tests,
+  )
+  t2j_function_test(
+    lambda x, y: f(x, [slice(1, None), slice(torch.tensor(1), torch.tensor(3)), 2], y),
+    [(3, 4, 5), (2, 2)],
+    tests=tests_nojit,
+  )
+  t2j_function_test(
+    lambda x, y: f(x, [slice(1, None), slice(torch.tensor(1), torch.tensor(3)), 2], y),
+    [(3, 4, 5), ()],
+    tests=tests_nojit,
+  )
 
 
 def test_oneliners():
