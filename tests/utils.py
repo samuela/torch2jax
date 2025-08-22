@@ -70,13 +70,14 @@ def args_generator(shapes, samplers=None, rng=random.PRNGKey(123)):
     yield args
 
 
-def forward_test(f, args, kwargs={}, **assert_kwargs):
+def forward_test(f, args, kwargs={}, test_jit=True, **assert_kwargs):
   torch_args = jax.tree.map(lambda x: j2t(x.copy()) if isinstance(x, (jnp.ndarray, jnp.dtype)) else x, args)
   torch_kwargs = jax.tree.map(lambda x: j2t(x) if isinstance(x, jnp.dtype) else x, kwargs)
   f_ = lambda *args, **kwargs: f(*args, **torch_kwargs)
   torch_output = f_(*torch_args)
   aac(t2j(f_)(*args), torch_output, **assert_kwargs)
-  aac(jit(t2j(f_))(*args), torch_output, **assert_kwargs)
+  if test_jit:
+    aac(jit(t2j(f_))(*args), torch_output, **assert_kwargs)
 
 
 def backward_test(f, args, kwargs={}, argnums=None, **assert_kwargs):
