@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from functools import partial
 
 import jax.numpy as jnp
@@ -53,6 +54,30 @@ def test_ones_like():
   t2j_function_test(torch.ones_like, [()], tests=tests)
   t2j_function_test(torch.ones_like, [(2,)], tests=tests)
   t2j_function_test(torch.ones_like, [(2, 3)], tests=tests)
+
+
+def test_tree_coerce():
+  @dataclass
+  class A:
+    a: torch.Tensor
+
+  @dataclass
+  class B:
+    a: A
+    b: int
+
+  torch.utils._pytree.register_dataclass(A)
+  torch.utils._pytree.register_dataclass(B)
+
+  def f():
+    t1 = torch.return_types.max([1, torch.ones(3)])
+    t2 = torch.return_types.topk([3.0, t1])
+    t3 = A(torch.ones(3, 2))
+    t4 = B(t3, 7)
+    return (t2, t3, t4)
+
+  tests = [forward_test]
+  t2j_function_test(f, [], tests=tests)
 
 
 def test_tensor():

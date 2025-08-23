@@ -1,6 +1,8 @@
 import copy
 import functools
+from collections import deque
 from contextlib import contextmanager
+from dataclasses import is_dataclass
 from typing import Literal, Optional, Sequence, Tuple, Union
 
 import jax
@@ -11,9 +13,14 @@ import torch
 from torch.overrides import TorchFunctionMode, resolve_name
 from torch.utils._pytree import register_pytree_node as torch_register_pytree_node
 from torch.utils._pytree import tree_map as torch_tree_map
+from torch.utils._pytree import tree_structure as torch_tree_structure
 
 # so that __getitem__ & __setitem__ with mixed keys of int / tensor could work
-torch_register_pytree_node(slice, lambda s: ((s.start, s.stop, s.step), None), lambda values, ctx: slice(*values))
+torch_register_pytree_node(
+  slice,
+  lambda s: ((s.start, s.stop, s.step), None),
+  lambda values, ctx: slice(*values),
+)
 
 
 class RngPooper:
@@ -211,6 +218,35 @@ def _coerce(x):
     )
 
 
+def _tree_coerce(x):
+  spec = torch_tree_structure(x)
+  specs = deque([spec])
+
+  while len(specs) > 0:
+    spec = specs.popleft()
+    specs.extend(spec.children_specs)
+    if spec.is_leaf():
+      continue
+    if spec.type in jax._src.tree_util._registry:
+      continue  # already registered
+    node = torch.utils._pytree.SUPPORTED_NODES.get(spec.type, None)
+    if node is None:
+      continue
+    if is_dataclass(spec.type):
+      jax.tree_util.register_dataclass(spec.type)
+    else:
+      jax.tree_util.register_pytree_node(
+        spec.type,
+        node.flatten_fn,
+        lambda a, b, n=node: n.unflatten_fn(b, a),  # torch & jax have different order of args
+        # flatten_with_keys_func=node.flatten_with_keys_fn,
+        # TODO: flatten_with_keys has some problem as jax & torch has different class for key
+        # without registering it seems to just work as well.
+      )
+
+  return jax.tree.map(_coerce, x)
+
+
 def _v(x):
   assert isinstance(x, Torchish)
   return x.value
@@ -256,7 +292,13 @@ def implements(torch_function, Torchishify_output=True, out_kwarg=False, Torchis
   return decorator
 
 
-def auto_implements(torch_function, jax_function, dont_coerce_argnums=(), out_kwarg=False, Torchish_member=False):
+def auto_implements(
+  torch_function,
+  jax_function,
+  dont_coerce_argnums=(),
+  out_kwarg=False,
+  Torchish_member=False,
+):
   @implements(torch_function, out_kwarg=out_kwarg, Torchish_member=Torchish_member)
   def fn(*args, **kwargs):
     # NOTE: we don't _coerce values in kwargs! So far this has not been problematic.
@@ -363,7 +405,13 @@ def multinomial(input, num_samples, replacement=False, generator=None):
 
   if input.ndim == 1:
     N = input.shape[0]
-    return jax.random.choice(mk_rng(), N, shape=(num_samples,), replace=replacement, p=_v(input) / _v(input).sum())
+    return jax.random.choice(
+      mk_rng(),
+      N,
+      shape=(num_samples,),
+      replace=replacement,
+      p=_v(input) / _v(input).sum(),
+    )
   elif input.ndim == 2:
     m, N = input.shape
     rngs = jax.random.split(mk_rng(), m)
@@ -454,7 +502,14 @@ def rand(
 
 
 @implements(torch.rand_like)
-def rand_like(input, dtype=None, layout=None, device=None, requires_grad=False, memory_format=torch.preserve_format):
+def rand_like(
+  input,
+  dtype=None,
+  layout=None,
+  device=None,
+  requires_grad=False,
+  memory_format=torch.preserve_format,
+):
   return jax.random.uniform(mk_rng(), shape=input.shape, dtype=t2j_dtype(dtype or input.dtype))
 
 
@@ -465,7 +520,11 @@ def randint(*args, **kwargs):
   high = kwargs.get("high", args[1] if len(args) == 3 else args[0])
   shape = kwargs.get("size", args[-1])
   return jax.random.randint(
-    mk_rng(), shape=shape, minval=low, maxval=high, dtype=t2j_dtype(kwargs.get("dtype", torch.int64))
+    mk_rng(),
+    shape=shape,
+    minval=low,
+    maxval=high,
+    dtype=t2j_dtype(kwargs.get("dtype", torch.int64)),
   )
 
 
@@ -475,7 +534,11 @@ def randint_like(*args, **kwargs):
   low = kwargs.get("low", args[1] if len(args) == 3 else 0)
   high = kwargs.get("high", args[2] if len(args) == 3 else args[1])
   return jax.random.randint(
-    mk_rng(), shape=input.shape, minval=low, maxval=high, dtype=t2j_dtype(kwargs.get("dtype", input.dtype))
+    mk_rng(),
+    shape=input.shape,
+    minval=low,
+    maxval=high,
+    dtype=t2j_dtype(kwargs.get("dtype", input.dtype)),
   )
 
 
@@ -498,7 +561,14 @@ def randn(
 
 
 @implements(torch.randn_like)
-def randn_like(input, dtype=None, layout=None, device=None, requires_grad=False, memory_format=torch.preserve_format):
+def randn_like(
+  input,
+  dtype=None,
+  layout=None,
+  device=None,
+  requires_grad=False,
+  memory_format=torch.preserve_format,
+):
   return jax.random.normal(mk_rng(), shape=input.shape, dtype=t2j_dtype(dtype or input.dtype))
 
 
@@ -536,7 +606,8 @@ def sum(input, dim=None, keepdim=False, dtype=None):
 def tensor(data, dtype=None, device=None, requires_grad=False, pin_memory=False):
   assert not requires_grad
   return jnp.array(
-    data.value if isinstance(data, Torchish) else data, dtype=(t2j_dtype(dtype) if dtype is not None else None)
+    data.value if isinstance(data, Torchish) else data,
+    dtype=(t2j_dtype(dtype) if dtype is not None else None),
   )
 
 
@@ -581,7 +652,16 @@ def adaptive_avg_pool2d(input, output_size):
 
 
 @implements(torch.nn.functional.batch_norm)
-def batch_norm(input, running_mean, running_var, weight=None, bias=None, training=False, momentum=0.1, eps=1e-5):
+def batch_norm(
+  input,
+  running_mean,
+  running_var,
+  weight=None,
+  bias=None,
+  training=False,
+  momentum=0.1,
+  eps=1e-5,
+):
   assert isinstance(input, Torchish)
   assert isinstance(running_mean, Torchish)
   assert isinstance(running_var, Torchish)
@@ -646,7 +726,16 @@ def conv2d(
 
 
 @implements(torch.nn.functional.conv_transpose2d)
-def conv_transpose2d(input, weight, bias=None, stride=1, padding=0, output_padding=0, groups=1, dilation=1):
+def conv_transpose2d(
+  input,
+  weight,
+  bias=None,
+  stride=1,
+  padding=0,
+  output_padding=0,
+  groups=1,
+  dilation=1,
+):
   # This implementation is taken from this PR https://github.com/google/jax/pull/5772
   assert input.ndim == 4, "TODO: implement non-batched input"
   assert groups == 1, "TODO: implement groups != 1"
@@ -851,7 +940,15 @@ def gradient_based_conv_transpose(
       raise ValueError(f"`padding` must be 'VALID' or 'SAME'. Passed: {padding}.")
 
   inferred_output_shape = tuple(
-    map(_deconv_output_length, i_sdims, k_sdims, padding, output_padding, strides, dilation)
+    map(
+      _deconv_output_length,
+      i_sdims,
+      k_sdims,
+      padding,
+      output_padding,
+      strides,
+      dilation,
+    )
   )
   if output_shape is None:
     output_shape = inferred_output_shape  # type: ignore[assignment]
@@ -863,7 +960,17 @@ def gradient_based_conv_transpose(
         f"but got `output_shape` {output_shape}"
       )
 
-  pads = tuple(map(_compute_adjusted_padding, i_sdims, output_shape, k_sdims, strides, padding, dilation))
+  pads = tuple(
+    map(
+      _compute_adjusted_padding,
+      i_sdims,
+      output_shape,
+      k_sdims,
+      strides,
+      padding,
+      dilation,
+    )
+  )
 
   if transpose_kernel:
     # flip spatial dims and swap input / output channel axes
@@ -897,7 +1004,15 @@ def dropout(input, p=0.5, training=True, inplace=False):
 
 
 @implements(torch.nn.functional.embedding)
-def embedding(input, weight, padding_idx=None, max_norm=None, norm_type=2.0, scale_grad_by_freq=False, sparse=False):
+def embedding(
+  input,
+  weight,
+  padding_idx=None,
+  max_norm=None,
+  norm_type=2.0,
+  scale_grad_by_freq=False,
+  sparse=False,
+):
   assert max_norm is None, "TODO: implement max_norm"
   assert not sparse, "TODO: implement sparse"
   input = _v(input)
@@ -957,7 +1072,15 @@ def linear(input, weight, bias=None):
 
 
 @implements(torch.nn.functional.max_pool1d)
-def max_pool1d(input, kernel_size, stride=None, padding=0, dilation=1, ceil_mode=False, return_indices=False):
+def max_pool1d(
+  input,
+  kernel_size,
+  stride=None,
+  padding=0,
+  dilation=1,
+  ceil_mode=False,
+  return_indices=False,
+):
   assert dilation == 1, "TODO: implement dilation != 1"
   assert not ceil_mode, "TODO: implement ceil_mode"
   assert not return_indices, "TODO: implement return_indices"
@@ -973,7 +1096,15 @@ def max_pool1d(input, kernel_size, stride=None, padding=0, dilation=1, ceil_mode
 
 
 @implements(torch.nn.functional.max_pool2d)
-def max_pool2d(input, kernel_size, stride=None, padding=0, dilation=1, ceil_mode=False, return_indices=False):
+def max_pool2d(
+  input,
+  kernel_size,
+  stride=None,
+  padding=0,
+  dilation=1,
+  ceil_mode=False,
+  return_indices=False,
+):
   assert input.ndim == 4, "TODO: implement non-batched input"
   assert dilation == 1, "TODO: implement dilation != 1"
   assert not ceil_mode, "TODO: implement ceil_mode"
@@ -1028,7 +1159,11 @@ def prelu(input: Torchish, weight: Torchish):
     weight = weight[0] if weight.ndim == 1 else weight
   else:
     weight = Torchish(
-      jax.lax.broadcast_in_dim(_v(weight), input.shape, () if weight.ndim == 0 else (0 if input.ndim == 1 else 1,))
+      jax.lax.broadcast_in_dim(
+        _v(weight),
+        input.shape,
+        () if weight.ndim == 0 else (0 if input.ndim == 1 else 1,),
+      )
     )
   return jnp.where(_v(input) > 0, _v(input), _v(input) * _v(weight))
 
@@ -1185,7 +1320,7 @@ def t2j_function(f):
         with TorchishMode():
           out = f(*torch_args)
     # use the torch's tree_map, because out is generated from torch code
-    return torch.utils._pytree.tree_map(lambda x: x.value if isinstance(x, Torchish) else x, out)
+    return _tree_coerce(out)
 
   return f_jax
 
