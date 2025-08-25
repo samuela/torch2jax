@@ -70,9 +70,23 @@ def args_generator(shapes, samplers=None, rng=random.PRNGKey(123)):
     yield args
 
 
+def _arg2t(x):
+  if isinstance(x, jnp.ndarray):
+    # copy to avoid in-place modification
+    return j2t(x.copy())
+  elif isinstance(x, jnp.dtype):
+    return j2t(x)
+  elif isinstance(x, np.ndarray):
+    # we allow passing numpy arrays directly in test cases
+    # it is needed because torch requires int64 for some functions, while jax's default is int32, using numpy allows them to each make their own casts.
+    return torch.from_numpy(x)
+  else:
+    return x
+
+
 def forward_test(f, args, kwargs={}, test_jit=True, **assert_kwargs):
-  torch_args = jax.tree.map(lambda x: j2t(x.copy()) if isinstance(x, (jnp.ndarray, jnp.dtype)) else x, args)
-  torch_kwargs = jax.tree.map(lambda x: j2t(x) if isinstance(x, jnp.dtype) else x, kwargs)
+  torch_args = jax.tree.map(_arg2t, args)
+  torch_kwargs = jax.tree.map(_arg2t, kwargs)
   f_ = lambda *args, **kwargs: f(*args, **torch_kwargs)
   torch_output = f_(*torch_args)
   aac(t2j(f_)(*args), torch_output, **assert_kwargs)
@@ -85,8 +99,8 @@ def backward_test(f, args, kwargs={}, argnums=None, **assert_kwargs):
   argnums = argnums if argnums is not None else tuple(range(n_inputs))
   if n_inputs == 0 or len(argnums) == 0:
     return
-  torch_args = jax.tree.map(lambda x: j2t(x.copy()) if isinstance(x, (jnp.ndarray, jnp.dtype)) else x, args)
-  torch_kwargs = jax.tree.map(lambda x: j2t(x) if isinstance(x, jnp.dtype) else x, kwargs)
+  torch_args = jax.tree.map(_arg2t, args)
+  torch_kwargs = jax.tree.map(_arg2t, kwargs)
   # always reduce output to the mean of all elements
   f_ = lambda *args: torch.cat(list(map(lambda x: x.flatten(), tree_leaves(f(*args, **torch_kwargs))))).mean()
   for t2j_grad, torch_grad in zip(
