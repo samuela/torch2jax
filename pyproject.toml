@@ -22,9 +22,9 @@ packages = ["torch2jax"]
 
 [tool.ruff]
 # Enable the isort rules. See https://github.com/astral-sh/ruff/issues/465#issuecomment-1783684428.
-extend-select = ["I"]
+lint.extend-select = ["I"]
 
 # E731 Do not assign a `lambda` expression, use a `def`
-ignore = ["E731"]
+lint.ignore = ["E731"]
 indent-width = 2
 line-length = 120
