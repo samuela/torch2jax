@@ -369,3 +369,13 @@ def test_grad_on_off():
       return torch.nn.functional.relu(x, inplace=True) - torch.nn.functional.relu(y, inplace=True)
 
   t2j_function_test(f4, [()], atol=1e-6, tests=tests)
+
+
+# See https://github.com/samuela/torch2jax/issues/30.
+def test_tuple_return_function():
+  def f(x):
+    y1 = x + 1
+    y2 = x * 2
+    return y1, y2
+
+  t2j_function_test(f, [(3,)], tests=[forward_test])
