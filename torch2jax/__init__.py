@@ -87,14 +87,10 @@ class Torchish:
   @value.setter
   def value(self, val):
     # See https://github.com/google/jax/issues/2115 re `isinstance(value, jnp.ndarray)`.
-    if isinstance(val, jnp.ndarray):
-      self._value = val if torch.is_grad_enabled() else jax.lax.stop_gradient(val)
-    elif isinstance(val, (np.ndarray, int, float)):
-      # as jax is transparent to np.ndarray, we want the t2j functions to work on np.ndarray as well.
-      # stop_gradient doesn't affect np array or constants
-      self._value = val
-    else:
-      raise TypeError(f"Tried to create Torchish with unsupported type: {type(val)}")
+    assert isinstance(val, jnp.ndarray) or isinstance(val, (np.ndarray, int, float)), (
+      f"Tried to create Torchish with unsupported type: {type(val)}"
+    )
+    self._value = val if torch.is_grad_enabled() else jax.lax.stop_gradient(val)
 
   # In order for PyTorch to accept an object as one of its own and allow dynamic dispatch it must either subclass
   # `torch.Tensor` or have a `__torch_function__` method. We opt to take the method route. Dispatch logic is handled in
