@@ -245,7 +245,6 @@ def test_oneliners():
   t2j_function_test(lambda x, y: x ^ y, [(3, 1), (3, 1)], samplers=samplers, tests=f)
   t2j_function_test(lambda x: ~x, [(3, 1)], samplers=[random.bernoulli], tests=f)
 
-
   # Seems like an innocent test, but this can cause segfaults when using dlpack in t2j_array
   t2j_function_test(lambda x: torch.tensor([3.0]) * torch.mean(x), [(5,)], atol=1e-6, tests=fb)
 

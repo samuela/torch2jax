@@ -331,12 +331,12 @@ auto_implements(torch.transpose, jnp.swapaxes, Torchish_member=True)
 
 
 @implements(torch.all, Torchish_member=True, out_kwarg=True)
-def all(input, dim=None, keepdim=False):
+def _all(input, dim=None, keepdim=False):
   return jnp.all(_v(input), axis=dim, keepdims=keepdim)
 
 
 @implements(torch.any, out_kwarg=True, Torchish_member=True)
-def any(input, dim=None, keepdim=False):
+def _any(input, dim=None, keepdim=False):
   return jnp.any(_v(input), axis=dim, keepdims=keepdim)
 
 
