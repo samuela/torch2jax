@@ -1,5 +1,6 @@
 import copy
 import functools
+from collections import deque
 from contextlib import contextmanager
 from typing import Literal, Optional, Sequence, Tuple, Union
 
@@ -11,6 +12,7 @@ import torch
 from torch.overrides import TorchFunctionMode, resolve_name
 from torch.utils._pytree import register_pytree_node as torch_register_pytree_node
 from torch.utils._pytree import tree_map as torch_tree_map
+from torch.utils._pytree import tree_structure as torch_tree_structure
 
 # so that __getitem__ & __setitem__ with mixed keys of int / tensor could work
 torch_register_pytree_node(slice, lambda s: ((s.start, s.stop, s.step), None), lambda values, ctx: slice(*values))
@@ -217,6 +219,33 @@ def _coerce(x):
     raise NotImplementedError(
       f"Attempted to _coerce with {x}, type {type(x)}. Don't know what to do with that. _coerce supports int, float, numpy arrays, None, Ellipsis, and Torchish values."
     )
+
+
+def _tree_coerce(x):
+  spec = torch_tree_structure(x)
+  specs = deque([spec])
+
+  while len(specs) > 0:
+    spec = specs.popleft()
+    specs.extend(spec.children_specs)
+    if spec.is_leaf():
+      continue
+    if spec.type in jax._src.tree_util._registry:
+      continue  # already registered
+    node = torch.utils._pytree.SUPPORTED_NODES.get(spec.type, None)
+    if node is None:
+      continue
+
+    def flip_args(fn):
+      return lambda a, b: fn(b, a)
+
+    jax.tree_util.register_pytree_node(
+      spec.type,
+      node.flatten_fn,
+      flip_args(node.unflatten_fn),  # torch & jax have different order of args
+    )
+
+  return jax.tree.map(_coerce, x)
 
 
 def _v(x):
@@ -1202,7 +1231,7 @@ def t2j_function(f):
         with TorchishMode():
           out = f(*torch_args)
     # use the torch's tree_map, because out is generated from torch code
-    return torch.utils._pytree.tree_map(lambda x: x.value if isinstance(x, Torchish) else x, out)
+    return _tree_coerce(out)
 
   return f_jax
 
