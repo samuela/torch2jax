@@ -164,7 +164,7 @@ class Torchish:
   def item(self): return self.value.item()
   def permute(self, *shape): return torch.permute(self, shape)
   def size(self): return self.shape
-  def to(self, *args, **kwargs): return self  # ignore device movement, jax manages its own placement.
+  def type_as(self, other): return Torchish(jnp.astype(self.value, other.value.dtype))
   # fmt: on
 
   def view(self, *shape_or_dtype):
@@ -177,6 +177,14 @@ class Torchish:
         raise ValueError(f"Tensor.view takes shape or dtype, got {shape_or_dtype[0]}")
 
     return Torchish(jnp.reshape(self.value, shape_or_dtype))
+
+  def to(self, *args, **kwargs):
+    # ignore device movement, jax manages its own placement
+    if len(args) > 0 and isinstance(args[0], torch.dtype):
+      return Torchish(jnp.astype(self.value, t2j_dtype(args[0])))
+    if dtype := kwargs.get("dtype"):
+      return Torchish(jnp.astype(self.value, t2j_dtype(dtype)))
+    return self
 
   reshape = view
 
@@ -201,13 +209,13 @@ def _coerce(x):
     return x.value
   elif isinstance(x, (int, float, np.ndarray, jnp.ndarray)):  # jax compatible types
     return x
-  elif x is None:
-    return None
+  elif any(x is e for e in (None, Ellipsis)):  # jax compatible special values
+    return x
   elif isinstance(x, torch.dtype):
     return t2j_dtype(x)
   else:
     raise NotImplementedError(
-      f"Attempted to _coerce with {x}, type {type(x)}. Don't know what to do with that. _coerce supports int, float, and Torchish values."
+      f"Attempted to _coerce with {x}, type {type(x)}. Don't know what to do with that. _coerce supports int, float, numpy arrays, None, Ellipsis, and Torchish values."
     )
 
 
@@ -269,7 +277,7 @@ def auto_implements(torch_function, jax_function, dont_coerce_argnums=(), out_kw
 auto_implements(torch.abs, jnp.abs, out_kwarg=True, Torchish_member=True)
 auto_implements(torch.add, jnp.add, out_kwarg=True, Torchish_member=True)
 auto_implements(torch.cos, jnp.cos, out_kwarg=True, Torchish_member=True)
-auto_implements(torch.clone, jnp.copy, Torchish_member=True)
+auto_implements(torch.clone, lambda x: x, Torchish_member=True)  # jax arrays are immutable, no copy needed
 auto_implements(torch.div, jnp.divide, out_kwarg=True, Torchish_member=True)
 auto_implements(torch.exp, jnp.exp, out_kwarg=True, Torchish_member=True)
 auto_implements(torch.nn.functional.gelu, jax.nn.gelu)
@@ -285,6 +293,11 @@ auto_implements(torch.sqrt, jnp.sqrt, out_kwarg=True, Torchish_member=True)
 auto_implements(torch.sub, jnp.subtract, out_kwarg=True, Torchish_member=True)
 auto_implements(torch.tanh, jnp.tanh, out_kwarg=True, Torchish_member=True)
 auto_implements(torch.transpose, jnp.swapaxes, Torchish_member=True)
+
+
+@implements(torch.all, Torchish_member=True, out_kwarg=True)
+def all(input, dim=None, keepdim=False):
+  return jnp.all(_v(input), axis=dim, keepdims=keepdim)
 
 
 @implements(torch._assert, Torchishify_output=False)
@@ -375,7 +388,7 @@ def multinomial(input, num_samples, replacement=False, generator=None):
     raise ValueError(f"unsupported shape: {input.shape}")
 
 
-@implements(torch.mean, Torchish_member=True)
+@implements(torch.mean, Torchish_member=True, out_kwarg=True)
 def mean(input, dim=None, keepdim=False, dtype=None):
   dtype = t2j_dtype(dtype) if dtype is not None else None
   return jnp.mean(_v(input), axis=dim, keepdims=keepdim, dtype=dtype)
@@ -526,7 +539,7 @@ def sort(input, dim=-1, descending=False, stable=False):
   return jnp.sort(_v(input), axis=dim, stable=stable, descending=descending)
 
 
-@implements(torch.sum, Torchish_member=True)
+@implements(torch.sum, Torchish_member=True, out_kwarg=True)
 def sum(input, dim=None, keepdim=False, dtype=None):
   dtype = t2j_dtype(dtype) if dtype is not None else None
   return jnp.sum(_v(input), axis=dim, keepdims=keepdim, dtype=dtype)
@@ -1034,7 +1047,11 @@ def prelu(input: Torchish, weight: Torchish):
 
 
 @implements(torch.nn.functional.scaled_dot_product_attention)
-def scaled_dot_product_attention(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None):
+def scaled_dot_product_attention(
+  query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None, enable_gqa=False
+):
+  # ignore enable_gqa argument, as this feature is automatically enabled on the
+  # jax side when there are a different number of query heads as key/value heads
   assert dropout_p == 0.0, "TODO: implement dropout"
   Q, K, V = _v(query), _v(key), _v(value)
   # torch has (batch, num_heads, seq_len, head_dim) for Q, K, V
