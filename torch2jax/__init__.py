@@ -2,6 +2,7 @@ import copy
 import functools
 from collections import deque
 from contextlib import contextmanager
+from functools import partial
 from typing import Literal, Optional, Sequence, Tuple, Union
 
 import jax
@@ -88,7 +89,7 @@ class Torchish:
   @value.setter
   def value(self, val):
     # See https://github.com/google/jax/issues/2115 re `isinstance(value, jnp.ndarray)`.
-    assert isinstance(val, jnp.ndarray) or isinstance(val, int) or isinstance(val, float), (
+    assert isinstance(val, jnp.ndarray) or isinstance(val, (np.ndarray, int, float)), (
       f"Tried to create Torchish with unsupported type: {type(val)}"
     )
     self._value = val if torch.is_grad_enabled() else jax.lax.stop_gradient(val)
@@ -561,6 +562,43 @@ def randperm(
 @implements(torch._C._set_grad_enabled, Torchishify_output=False)
 def _set_grad_enabled(mode):
   torch._C._set_grad_enabled(mode)
+
+
+def scatter_impl(input, dim, index, src, *, reduce=None):
+  # Code adopted from https://github.com/jax-ml/jax/issues/8487#issuecomment-1555311635
+  # in jax the dims other than dim for index & src should be equal,
+  # but torch allows index to be smaller, we pad it with a out-of-bound index to match the src.
+  out_of_range_idx = input.shape[dim]
+  padding = tuple((0, d2 - d1) for d1, d2 in zip(index.shape, src.shape))
+  index = jnp.pad(index, padding, constant_values=out_of_range_idx)
+  dnums = jax.lax.ScatterDimensionNumbers(
+    update_window_dims=(), inserted_window_dims=(0,), scatter_dims_to_operand_dims=(0,)
+  )
+  if reduce is None:
+    _scatter = jax.lax.scatter
+  elif reduce == "add":
+    _scatter = jax.lax.scatter_add
+  elif reduce == "multiply":
+    _scatter = jax.lax.scatter_mul
+
+  _scatter = partial(_scatter, dimension_numbers=dnums, mode="drop")
+  vmap_inner = partial(jax.vmap, in_axes=(0, 0, 0), out_axes=0)
+
+  for _ in range(len(input.shape) - 1):
+    _scatter = vmap_inner(_scatter)
+  swap = lambda x: jnp.swapaxes(x, dim, -1)
+  input, index, src = list(map(swap, (input, index, src)))
+  return swap(_scatter(input, jnp.expand_dims(index, axis=-1), src))
+
+
+@implements(torch.scatter, Torchish_member=True)
+def scatter(input, dim, index, src):
+  return scatter_impl(_v(input), dim, _v(index), _v(src), reduce=None)
+
+
+@implements(torch.scatter_add, Torchish_member=True)
+def scatter_add(input, dim, index, src):
+  return scatter_impl(_v(input), dim, _v(index), _v(src), reduce="add")
 
 
 @implements(torch.sort, out_kwarg=True, Torchish_member=True)

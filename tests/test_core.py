@@ -3,9 +3,10 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 import pytest
 import torch
-from jax import grad, jit, vmap
+from jax import grad, jit, random, vmap
 
 from torch2jax import t2j
 
@@ -284,6 +285,59 @@ def test_oneliners():
 
   t2j_function_test(torch.abs, [(3,)], tests=fbmo)
   t2j_function_test(lambda x: (x > 0.0).float(), [(3,)], tests=fb)
+
+
+def test_scatter():
+  # scatter
+  index = np.array([[0, 1, 2, 0, 2], [1, 0, 0, 2, 1]], dtype=np.int64)
+  samplers = [random.normal, lambda key, shape: index, random.normal]
+  tests = [forward_test, partial(backward_test, argnums=(0, 2))]
+  t2j_function_test(
+    lambda input, index, src: torch.scatter(input, 0, index, src),
+    [(3, 5), (2, 5), (2, 5)],
+    samplers=samplers,
+    atol=1e-6,
+    tests=tests,
+  )
+  # Disable gradient testing when index.shape != src.shape
+  # This is an existing problem of pytorch https://github.com/pytorch/pytorch/issues/27614
+  index = np.array([[0, 1, 2, 0, 2]], dtype=np.int64)
+  samplers = [random.normal, lambda key, shape: index, random.normal]
+  tests = [forward_test]
+  t2j_function_test(
+    lambda input, index, src: torch.scatter(input, 0, index, src),
+    [(3, 5), (1, 5), (2, 5)],
+    samplers=samplers,
+    atol=1e-6,
+    tests=tests,
+  )
+  index = np.array([[0, 1, 2, 0]], dtype=np.int64)
+  samplers = [random.normal, lambda key, shape: index, random.normal]
+  t2j_function_test(
+    lambda input, index, src: torch.scatter(input, 0, index, src),
+    [(3, 5), (1, 4), (2, 5)],
+    samplers=samplers,
+    atol=1e-6,
+    tests=tests,
+  )
+  index = np.array([[4, 2, 3], [3, 0, 4]], dtype=np.int64)
+  samplers = [random.normal, lambda key, shape: index, random.normal]
+  t2j_function_test(
+    lambda input, index, src: torch.scatter(input, 1, index, src),
+    [(3, 5), (2, 3), (3, 5)],
+    samplers=samplers,
+    atol=1e-6,
+    tests=tests,
+  )
+  index = np.array([[4, 2, 3], [3, 0, 4], [0, 1, 2]], dtype=np.int64)
+  samplers = [random.normal, lambda key, shape: index, random.normal]
+  t2j_function_test(
+    lambda input, index, src: torch.scatter(input, 1, index, src),
+    [(3, 5), (3, 3), (3, 5)],
+    samplers=samplers,
+    atol=1e-6,
+    tests=tests,
+  )
 
 
 def test_Tensor():
