@@ -400,6 +400,12 @@ def flatten(input, start_dim=0, end_dim=-1):
   return jnp.reshape(_v(input), input.shape[:start_dim] + (-1,))
 
 
+@implements(torch.mean, Torchish_member=True, out_kwarg=True)
+def mean(input, dim=None, keepdim=False, dtype=None):
+  dtype = t2j_dtype(dtype) if dtype is not None else None
+  return jnp.mean(_v(input), axis=dim, keepdims=keepdim, dtype=dtype)
+
+
 @implements(torch.multinomial, out_kwarg=True, Torchish_member=True)
 def multinomial(input, num_samples, replacement=False, generator=None):
   assert generator is None, "TODO: implement `generator`"
@@ -416,12 +422,6 @@ def multinomial(input, num_samples, replacement=False, generator=None):
     )(rngs, _v(input))
   else:
     raise ValueError(f"unsupported shape: {input.shape}")
-
-
-@implements(torch.mean, Torchish_member=True, out_kwarg=True)
-def mean(input, dim=None, keepdim=False, dtype=None):
-  dtype = t2j_dtype(dtype) if dtype is not None else None
-  return jnp.mean(_v(input), axis=dim, keepdims=keepdim, dtype=dtype)
 
 
 @implements(torch.normal, out_kwarg=True)
