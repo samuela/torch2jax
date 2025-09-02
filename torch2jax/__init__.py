@@ -139,8 +139,10 @@ class Torchish:
 
   # fmt: off
   def __add__(self, other): return Torchish(self.value + _coerce(other))
+  def __bool__(self): return bool(self.value)
   def __getitem__(self, key): return Torchish(self.value.__getitem__(torch_tree_map(_coerce, key)))
   def __int__(self): return int(self.value)
+  def __invert__(self): return torch.bitwise_not(self)
   def __lt__(self, other): return Torchish(self.value < _coerce(other))
   def __le__(self, other): return Torchish(self.value <= _coerce(other))
   def __eq__(self, other): return Torchish(self.value == _coerce(other))
@@ -159,6 +161,9 @@ class Torchish:
     self.value = self.value.at[torch_tree_map(_coerce, key)].set(_coerce(value))
   def __sub__(self, other): return Torchish(self.value - _coerce(other))
 
+  def __or__(self, other): return Torchish(self.value | _coerce(other))
+  def __and__(self, other): return Torchish(self.value & _coerce(other))
+  def __xor__(self, other): return Torchish(self.value ^ _coerce(other))
   # For some reason `foo = torch.foo` doesn't work on these
   def contiguous(self): return self
   def detach(self): return Torchish(jax.lax.stop_gradient(self.value))
@@ -330,6 +335,11 @@ def all(input, dim=None, keepdim=False):
   return jnp.all(_v(input), axis=dim, keepdims=keepdim)
 
 
+@implements(torch.any, out_kwarg=True, Torchish_member=True)
+def any(input, dim=None, keepdim=False):
+  return jnp.any(_v(input), axis=dim, keepdims=keepdim)
+
+
 @implements(torch._assert, Torchishify_output=False)
 def _assert(condition, message):
   if not condition:
@@ -367,6 +377,11 @@ def bernoulli(input, generator=None):
   return jax.random.bernoulli(mk_rng(), p=_v(input))
 
 
+@implements(torch.bitwise_not, out_kwarg=True, Torchish_member=True)
+def bitwise_not(input):
+  return jnp.invert(_v(input))
+
+
 @implements(torch.cat, out_kwarg=True)
 def cat(tensors, dim=0):
   return jnp.concatenate([_v(x) for x in tensors], axis=dim)
@@ -398,6 +413,26 @@ def empty(
 def flatten(input, start_dim=0, end_dim=-1):
   assert end_dim == -1, "TODO: implement end_dim"
   return jnp.reshape(_v(input), input.shape[:start_dim] + (-1,))
+
+
+@implements(torch.logical_and, out_kwarg=True, Torchish_member=True)
+def logical_and(input, other):
+  return jnp.logical_and(_v(input), _v(other))
+
+
+@implements(torch.logical_or, out_kwarg=True, Torchish_member=True)
+def logical_or(input, other):
+  return jnp.logical_or(_v(input), _v(other))
+
+
+@implements(torch.logical_not, out_kwarg=True, Torchish_member=True)
+def logical_not(input):
+  return jnp.logical_not(_v(input))
+
+
+@implements(torch.logical_xor, out_kwarg=True, Torchish_member=True)
+def logical_xor(input, other):
+  return jnp.logical_xor(_v(input), _v(other))
 
 
 @implements(torch.multinomial, out_kwarg=True, Torchish_member=True)

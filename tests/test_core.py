@@ -178,6 +178,7 @@ def test_oneliners():
   fbm = fb + [Torchish_member_test]
   fbo = fb + [out_kwarg_test]
   fbmo = fbm + [out_kwarg_test]
+  fmo = f + [Torchish_member_test, out_kwarg_test]
 
   t2j_function_test(lambda x: torch.pow(x, 2), [()], tests=fb)
   t2j_function_test(lambda x: torch.pow(x, 2), [(3,)], tests=fb)
@@ -209,6 +210,41 @@ def test_oneliners():
   t2j_function_test(torch.sin, [(3,)], atol=1e-6, tests=fbmo)
   t2j_function_test(torch.cos, [(3,)], atol=1e-6, tests=fbmo)
   t2j_function_test(lambda x: -x, [(3,)], tests=fb)
+
+  samplers = [random.bernoulli]
+  t2j_function_test(torch.all, [(3, 2)], samplers=samplers, tests=fmo)
+  t2j_function_test(torch.all, [(3, 2)], samplers=samplers, kwargs=dict(dim=1), tests=fmo)
+  t2j_function_test(torch.any, [(3, 2)], samplers=samplers, tests=fmo)
+  t2j_function_test(torch.any, [(3, 2)], samplers=samplers, kwargs=dict(dim=1), tests=fmo)
+
+  # bitwise_not on int and bool tensors
+  t2j_function_test(
+    torch.bitwise_not,
+    [(3, 2)],
+    samplers=[lambda key, shape: random.randint(key, shape, minval=0, maxval=1024)],
+    tests=fmo,
+  )
+  t2j_function_test(torch.bitwise_not, [(3, 2)], samplers=[random.bernoulli], tests=fmo)
+  # logical operations
+  samplers = [random.bernoulli, random.bernoulli]
+  t2j_function_test(torch.logical_and, [(3, 2), (3, 2)], samplers=samplers, tests=fmo)
+  t2j_function_test(torch.logical_and, [(3, 2), (2)], samplers=samplers, tests=fmo)
+  t2j_function_test(torch.logical_and, [(3, 2), (3, 1)], samplers=samplers, tests=fmo)
+  t2j_function_test(torch.logical_or, [(3, 2), (3, 2)], samplers=samplers, tests=fmo)
+  t2j_function_test(torch.logical_or, [(3, 2), (2)], samplers=samplers, tests=fmo)
+  t2j_function_test(torch.logical_or, [(3, 2), (3, 1)], samplers=samplers, tests=fmo)
+  t2j_function_test(torch.logical_xor, [(3, 2), (3, 2)], samplers=samplers, tests=fmo)
+  t2j_function_test(torch.logical_xor, [(3, 2), (2)], samplers=samplers, tests=fmo)
+  t2j_function_test(torch.logical_xor, [(3, 2), (3, 1)], samplers=samplers, tests=fmo)
+  t2j_function_test(torch.logical_not, [(3, 2)], samplers=[random.bernoulli], tests=fmo)
+  t2j_function_test(torch.logical_not, [(2)], samplers=[random.bernoulli], tests=fmo)
+  t2j_function_test(torch.logical_not, [(3, 1)], samplers=[random.bernoulli], tests=fmo)
+  # tensor operators
+  t2j_function_test(lambda x, y: x & y, [(3, 1), (3, 1)], samplers=samplers, tests=f)
+  t2j_function_test(lambda x, y: x | y, [(3, 1), (3, 1)], samplers=samplers, tests=f)
+  t2j_function_test(lambda x, y: x ^ y, [(3, 1), (3, 1)], samplers=samplers, tests=f)
+  t2j_function_test(lambda x: ~x, [(3, 1)], samplers=[random.bernoulli], tests=f)
+
 
   # Seems like an innocent test, but this can cause segfaults when using dlpack in t2j_array
   t2j_function_test(lambda x: torch.tensor([3.0]) * torch.mean(x), [(5,)], atol=1e-6, tests=fb)
