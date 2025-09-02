@@ -21,6 +21,20 @@ def test_arange():
     test(lambda out=None: torch.arange(2, 10, 3, out=out), [])
 
 
+def test_cast_to_scalar():
+  # in future, we should have the __float__ and __int__ methods tested here.
+  def f(x):
+    return bool(x)
+
+  assert t2j(f)(True)
+  assert not t2j(f)(False)
+  assert t2j(f)(jnp.array(True))
+  assert t2j(f)(jnp.array([True]))
+  assert t2j(f)(jnp.array([[True]]))
+  # jitted version should fail, because casting traced dynamic value to bool is not allowed in jax.
+  # jax.jit(t2j(f))(jnp.array(True))
+
+
 def test_empty():
   # torch.empty returns uninitialized values, so we need to multiply by 0 for deterministic, testable behavior.
   # NaNs are possible, so we need to convert them first. See
