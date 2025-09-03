@@ -311,11 +311,16 @@ def auto_implements(torch_function, jax_function, dont_coerce_argnums=(), out_kw
 
 auto_implements(torch.abs, jnp.abs, out_kwarg=True, Torchish_member=True)
 auto_implements(torch.add, jnp.add, out_kwarg=True, Torchish_member=True)
+auto_implements(torch.bitwise_not, jnp.invert, out_kwarg=True, Torchish_member=True)
 auto_implements(torch.cos, jnp.cos, out_kwarg=True, Torchish_member=True)
 auto_implements(torch.clone, lambda x: x, Torchish_member=True)  # jax arrays are immutable, no copy needed
 auto_implements(torch.div, jnp.divide, out_kwarg=True, Torchish_member=True)
 auto_implements(torch.exp, jnp.exp, out_kwarg=True, Torchish_member=True)
 auto_implements(torch.nn.functional.gelu, jax.nn.gelu)
+auto_implements(torch.logical_and, jnp.logical_and, out_kwarg=True, Torchish_member=True)
+auto_implements(torch.logical_or, jnp.logical_or, out_kwarg=True, Torchish_member=True)
+auto_implements(torch.logical_not, jnp.logical_not, out_kwarg=True, Torchish_member=True)
+auto_implements(torch.logical_xor, jnp.logical_xor, out_kwarg=True, Torchish_member=True)
 auto_implements(torch.mul, jnp.multiply, out_kwarg=True, Torchish_member=True)
 auto_implements(torch.nan_to_num, jnp.nan_to_num, out_kwarg=True, Torchish_member=True)
 # Tensor.permute has a different signature than torch.permute
@@ -377,11 +382,6 @@ def bernoulli(input, generator=None):
   return jax.random.bernoulli(mk_rng(), p=_v(input))
 
 
-@implements(torch.bitwise_not, out_kwarg=True, Torchish_member=True)
-def bitwise_not(input):
-  return jnp.invert(_v(input))
-
-
 @implements(torch.cat, out_kwarg=True)
 def cat(tensors, dim=0):
   return jnp.concatenate([_v(x) for x in tensors], axis=dim)
@@ -413,26 +413,6 @@ def empty(
 def flatten(input, start_dim=0, end_dim=-1):
   assert end_dim == -1, "TODO: implement end_dim"
   return jnp.reshape(_v(input), input.shape[:start_dim] + (-1,))
-
-
-@implements(torch.logical_and, out_kwarg=True, Torchish_member=True)
-def logical_and(input, other):
-  return jnp.logical_and(_v(input), _v(other))
-
-
-@implements(torch.logical_or, out_kwarg=True, Torchish_member=True)
-def logical_or(input, other):
-  return jnp.logical_or(_v(input), _v(other))
-
-
-@implements(torch.logical_not, out_kwarg=True, Torchish_member=True)
-def logical_not(input):
-  return jnp.logical_not(_v(input))
-
-
-@implements(torch.logical_xor, out_kwarg=True, Torchish_member=True)
-def logical_xor(input, other):
-  return jnp.logical_xor(_v(input), _v(other))
 
 
 @implements(torch.multinomial, out_kwarg=True, Torchish_member=True)
