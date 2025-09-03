@@ -139,8 +139,10 @@ class Torchish:
 
   # fmt: off
   def __add__(self, other): return Torchish(self.value + _coerce(other))
+  def __bool__(self): return bool(self.value)
   def __getitem__(self, key): return Torchish(self.value.__getitem__(torch_tree_map(_coerce, key)))
   def __int__(self): return int(self.value)
+  def __invert__(self): return torch.bitwise_not(self)
   def __lt__(self, other): return Torchish(self.value < _coerce(other))
   def __le__(self, other): return Torchish(self.value <= _coerce(other))
   def __eq__(self, other): return Torchish(self.value == _coerce(other))
@@ -159,6 +161,9 @@ class Torchish:
     self.value = self.value.at[torch_tree_map(_coerce, key)].set(_coerce(value))
   def __sub__(self, other): return Torchish(self.value - _coerce(other))
 
+  def __or__(self, other): return Torchish(self.value | _coerce(other))
+  def __and__(self, other): return Torchish(self.value & _coerce(other))
+  def __xor__(self, other): return Torchish(self.value ^ _coerce(other))
   # For some reason `foo = torch.foo` doesn't work on these
   def contiguous(self): return self
   def detach(self): return Torchish(jax.lax.stop_gradient(self.value))
@@ -306,11 +311,16 @@ def auto_implements(torch_function, jax_function, dont_coerce_argnums=(), out_kw
 
 auto_implements(torch.abs, jnp.abs, out_kwarg=True, Torchish_member=True)
 auto_implements(torch.add, jnp.add, out_kwarg=True, Torchish_member=True)
+auto_implements(torch.bitwise_not, jnp.invert, out_kwarg=True, Torchish_member=True)
 auto_implements(torch.cos, jnp.cos, out_kwarg=True, Torchish_member=True)
 auto_implements(torch.clone, lambda x: x, Torchish_member=True)  # jax arrays are immutable, no copy needed
 auto_implements(torch.div, jnp.divide, out_kwarg=True, Torchish_member=True)
 auto_implements(torch.exp, jnp.exp, out_kwarg=True, Torchish_member=True)
 auto_implements(torch.nn.functional.gelu, jax.nn.gelu)
+auto_implements(torch.logical_and, jnp.logical_and, out_kwarg=True, Torchish_member=True)
+auto_implements(torch.logical_or, jnp.logical_or, out_kwarg=True, Torchish_member=True)
+auto_implements(torch.logical_not, jnp.logical_not, out_kwarg=True, Torchish_member=True)
+auto_implements(torch.logical_xor, jnp.logical_xor, out_kwarg=True, Torchish_member=True)
 auto_implements(torch.mul, jnp.multiply, out_kwarg=True, Torchish_member=True)
 auto_implements(torch.nan_to_num, jnp.nan_to_num, out_kwarg=True, Torchish_member=True)
 # Tensor.permute has a different signature than torch.permute
@@ -326,8 +336,13 @@ auto_implements(torch.transpose, jnp.swapaxes, Torchish_member=True)
 
 
 @implements(torch.all, Torchish_member=True, out_kwarg=True)
-def all(input, dim=None, keepdim=False):
+def _all(input, dim=None, keepdim=False):
   return jnp.all(_v(input), axis=dim, keepdims=keepdim)
+
+
+@implements(torch.any, out_kwarg=True, Torchish_member=True)
+def _any(input, dim=None, keepdim=False):
+  return jnp.any(_v(input), axis=dim, keepdims=keepdim)
 
 
 @implements(torch._assert, Torchishify_output=False)
